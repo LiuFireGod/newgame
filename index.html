@@ -877,6 +877,13 @@ let toastTimer; // 提前声明，避免 showToast 在脚本初始化完成前�
 let cloudPosts = []; // 提前声明，供 init 中 loadPosts/renderPosts 使用（帖子）
 let currentGame = "全部"; // 提前声明，供 init 中 renderPosts 使用
 let likedPosts = new Set(); // 提前声明，供 init 中 renderPosts 使用
+// 管理员名单（不区分大小写，云端 is_admin 优先）—— 必须提前声明，避免初始化时 TDZ 报错导致脚本中断
+const ADMIN_USERS = ['asd1316947244'];
+function isAdminUser(u) {
+  if (!u) return false;
+  if (u.is_admin === true) return true;
+  return ADMIN_USERS.includes(u.lname || (u.name || '').toLowerCase());
+}
 // ===== 云端（Supabase REST）：帖子跨设备共享（不依赖外部CDN，直接用 fetch） =====
 const SUPABASE_URL = 'https://ycxasrnnvwhcvzkmwhxu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qALYuuKrijmsInYREJ8xyw_qkYJ8G7I';
@@ -2108,14 +2115,6 @@ function admReset() {
 document.getElementById('adminPanel').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
-// 管理员名单（不区分大小写，云端 is_admin 优先）
-const ADMIN_USERS = ['asd1316947244'];
-function isAdminUser(u) {
-  if (!u) return false;
-  if (u.is_admin === true) return true;
-  return ADMIN_USERS.includes(u.lname || (u.name || '').toLowerCase());
-}
-
 // 在线心跳：登录状态下每20秒把"在线"状态上报云端
 async function cloudHeartbeat(userName) {
   try {
