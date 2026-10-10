@@ -1705,12 +1705,31 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
 // 多座山配置，以后加新山直接在这里加
 // ===== 游戏公告（新增内容写在这里） =====
 const IG_NOTICES = [
-  { date: '2026-10-11', title: '修仙系统上线', content: '新增境界修炼、灵石商店与人口系统，产出更高，挖山更快！' },
-  { date: '2026-10-10', title: '13座大山 × 12位神话Boss', content: '新增不灭仙山与十二位神话Boss，挑战更刺激。' },
-  { date: '2026-10-10', title: '全新排行榜', content: '挖山 / 金币 / 进度 / Boss 四大榜单，全服玩家同台竞技。' },
+  { date: '2026-10-11', title: '活动中心上线', content: '新增每日签到（7天循环领钻石）、Boss猎手与挖山大师里程碑奖励、拉人游玩送钻石！' },
+  { date: '2026-10-11', title: '排行榜优化', content: '仅统计注册玩家、只显示名称；点击名称可查看玩家主页（头像/简介/战绩）。' },
+  { date: '2026-10-11', title: '自动挖山', content: '挖完一座山自动接着挖下一座，无需手动切换，挂机更省心。' },
+  { date: '2026-10-11', title: '修仙系统上线', content: '新增境界修炼、灵石商店与人口系统；招徕成本已按金币获取难度下调。' },
 ];
 // ===== 拉人游玩活动：每邀请1位新玩家游玩并登录，奖励50钻石 =====
 const IG_INVITE_REWARD = 50;
+// ===== 每日签到（7天循环） =====
+const IG_CHECKIN_REWARDS = [100, 200, 300, 400, 500, 600, 800];      // 金币
+const IG_CHECKIN_STONES  = [0, 0, 2, 0, 5, 0, 10];                   // 灵石
+const IG_CHECKIN_DIAMONDS = [0, 0, 0, 0, 0, 0, 5];                   // 钻石
+// ===== Boss 猎手里程碑 =====
+const IG_BOSS_MILESTONES = [
+  { id: 'b5', icon: '🐉', name: '初露锋芒', desc: '累计击败 Boss 5 次', target: 5, rewardText: '300金币·3灵石', coins: 300, stones: 3 },
+  { id: 'b10', icon: '⚔️', name: '斩妖除魔', desc: '累计击败 Boss 10 次', target: 10, rewardText: '800金币·5灵石', coins: 800, stones: 5 },
+  { id: 'b25', icon: '🗡️', name: '屠龙勇士', desc: '累计击败 Boss 25 次', target: 25, rewardText: '15钻石', diamonds: 15 },
+  { id: 'b50', icon: '👑', name: '降魔天尊', desc: '累计击败 Boss 50 次', target: 50, rewardText: '2000金币·10灵石·30钻石', coins: 2000, stones: 10, diamonds: 30 },
+];
+// ===== 挖山大师里程碑 =====
+const IG_MOUNTAIN_MILESTONES = [
+  { id: 'm3', icon: '⛰️', name: '三山已平', desc: '累计挖完 3 座山', target: 3, rewardText: '500金币·5灵石', coins: 500, stones: 5 },
+  { id: 'm6', icon: '🏔️', name: '六岳臣服', desc: '累计挖完 6 座山', target: 6, rewardText: '15钻石', diamonds: 15 },
+  { id: 'm9', icon: '🗻', name: '九山之主', desc: '累计挖完 9 座山', target: 9, rewardText: '30钻石', diamonds: 30 },
+  { id: 'm13', icon: '☯️', name: '移山仙人', desc: '累计挖完全部 13 座山', target: 13, rewardText: '80钻石', diamonds: 80 },
+];
 const IG_MOUNTAINS = [
   { id: 'taihang', name: '太行山', total: 100000, unlockDesc: '初始开放' },
   { id: 'wangwu', name: '王屋山', total: 500000, unlockAt: 'taihang', unlockDesc: '挖完太行山解锁' },
@@ -2539,6 +2558,29 @@ async function renderEvents() {
     '<span>💎 我的钻石：<b style="color:#f1c40f;">' + igFmt(diamonds) + '</b></span>' +
     '<span>👥 已邀请：<b style="color:#00b894;">' + invitedCount + '</b> 人</span>' +
     '</div>' + giftBox +
+    '</div>' +
+    // ===== 每日签到 =====
+    '<div style="font-size:12px;font-weight:700;color:#f0932b;margin-top:16px;margin-bottom:8px;">📅 每日签到</div>' +
+    (u ? `<div style="background:linear-gradient(135deg,rgba(240,147,43,.12),rgba(116,185,255,.12));border:1px solid #f0932b;border-radius:12px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text-primary);">今日奖励：${igCheckinState().rewardText}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">连续签到 ${igCheckinState().streak} 天 · 第${igCheckinState().idx + 1}/7 天（第7天+${IG_CHECKIN_DIAMONDS[6]}钻石）</div>
+        </div>
+        ${igCheckinState().done
+          ? '<span style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text-secondary);">✅ 今日已签到</span>'
+          : '<button class="ig-shop-btn" style="background:#f0932b;" onclick="igDoCheckin()">🎫 立即签到</button>'}
+      </div>
+    </div>` : '<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--text-secondary);">登录后即可每日签到领奖励</div>') +
+    // ===== Boss 猎手 =====
+    '<div style="font-size:12px;font-weight:700;color:#e17055;margin-top:16px;margin-bottom:8px;">🐉 Boss 猎手</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+    IG_BOSS_MILESTONES.map(m => igMilestoneCard(m, igState.bossKills || 0, igState.boss_claimed, 'igClaimBoss')).join('') +
+    '</div>' +
+    // ===== 挖山大师 =====
+    '<div style="font-size:12px;font-weight:700;color:#a29bfe;margin-top:16px;margin-bottom:8px;">⛰️ 挖山大师</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+    IG_MOUNTAIN_MILESTONES.map(m => igMilestoneCard(m, igMountainCount(), igState.mountain_claimed, 'igClaimMountain')).join('') +
     '</div>';
 }
 function copyInviteLink() {
@@ -2547,6 +2589,83 @@ function copyInviteLink() {
   inp.select();
   try { document.execCommand('copy'); showToast('✅ 邀请链接已复制'); }
   catch(e) { showToast('请手动复制链接'); }
+}
+
+// ===== 每日签到 =====
+function igCheckinState() {
+  const today = new Date();
+  const key = today.getFullYear() + '-' + (today.getMonth()+1) + '-' + today.getDate();
+  let s = { date: '', streak: 0 };
+  try { s = JSON.parse(localStorage.getItem('ig_checkin') || '{"date":"","streak":0}'); } catch(e) {}
+  const done = s.date === key;
+  let streak = s.streak || 0;
+  if (!done) {
+    const y = new Date(today.getTime() - 86400000);
+    const yKey = y.getFullYear() + '-' + (y.getMonth()+1) + '-' + y.getDate();
+    streak = s.date === yKey ? streak : 0;
+  }
+  const idx = streak % 7;
+  let rewardText = IG_CHECKIN_REWARDS[idx] + '金币';
+  if (IG_CHECKIN_STONES[idx]) rewardText += '·' + IG_CHECKIN_STONES[idx] + '灵石';
+  if (IG_CHECKIN_DIAMONDS[idx]) rewardText += '·' + IG_CHECKIN_DIAMONDS[idx] + '钻石';
+  return { done, streak, idx, rewardText };
+}
+function igDoCheckin() {
+  const st = igCheckinState();
+  if (st.done) { showToast('今日已签到，明天再来~'); return; }
+  const idx = st.idx;
+  igState.coins = (igState.coins || 0) + IG_CHECKIN_REWARDS[idx];
+  igState.spiritStones = (igState.spiritStones || 0) + IG_CHECKIN_STONES[idx];
+  igState.diamonds = (igState.diamonds || 0) + IG_CHECKIN_DIAMONDS[idx];
+  const today = new Date();
+  const key = today.getFullYear() + '-' + (today.getMonth()+1) + '-' + today.getDate();
+  localStorage.setItem('ig_checkin', JSON.stringify({ date: key, streak: st.streak + 1 }));
+  showToast('🎫 签到成功！+' + IG_CHECKIN_REWARDS[idx] + '金币' + (IG_CHECKIN_STONES[idx] ? '、' + IG_CHECKIN_STONES[idx] + '灵石' : '') + (IG_CHECKIN_DIAMONDS[idx] ? '、' + IG_CHECKIN_DIAMONDS[idx] + '钻石' : ''));
+  igSave(); renderEvents();
+}
+// ===== 里程碑（Boss猎手 / 挖山大师） =====
+function igMountainCount() {
+  let n = 0;
+  IG_MOUNTAINS.forEach(m => { const d = igState.mountains[m.id]; if (d && d.progress >= m.total) n++; });
+  return n;
+}
+function igClaimBoss(id) {
+  const m = IG_BOSS_MILESTONES.find(x => x.id === id); if (!m) return;
+  if ((igState.boss_claimed || {})[id]) return;
+  if ((igState.bossKills || 0) < m.target) return;
+  igState.boss_claimed = igState.boss_claimed || {};
+  igState.boss_claimed[id] = true;
+  igState.coins = (igState.coins || 0) + (m.coins || 0);
+  igState.spiritStones = (igState.spiritStones || 0) + (m.stones || 0);
+  igState.diamonds = (igState.diamonds || 0) + (m.diamonds || 0);
+  showToast('🏆 「' + m.name + '」达成！奖励已发放');
+  igSave(); renderEvents();
+}
+function igClaimMountain(id) {
+  const m = IG_MOUNTAIN_MILESTONES.find(x => x.id === id); if (!m) return;
+  if ((igState.mountain_claimed || {})[id]) return;
+  if (igMountainCount() < m.target) return;
+  igState.mountain_claimed = igState.mountain_claimed || {};
+  igState.mountain_claimed[id] = true;
+  igState.coins = (igState.coins || 0) + (m.coins || 0);
+  igState.spiritStones = (igState.spiritStones || 0) + (m.stones || 0);
+  igState.diamonds = (igState.diamonds || 0) + (m.diamonds || 0);
+  showToast('🏔️ 「' + m.name + '」达成！奖励已发放');
+  igSave(); renderEvents();
+}
+function igMilestoneCard(m, got, claimedMap, claimFn) {
+  const ok = got >= m.target;
+  const claimed = (claimedMap || {})[m.id];
+  const btn = claimed
+    ? '<span style="color:var(--text-secondary);font-size:11px;">已领取</span>'
+    : ok
+      ? `<button class="ig-shop-btn" style="background:#00b894;" onclick="${claimFn}('${m.id}')">领取 ${m.rewardText}</button>`
+      : `<span style="color:var(--text-secondary);font-size:11px;">${m.rewardText} · ${Math.min(got, m.target)}/${m.target}</span>`;
+  return `<div style="background:var(--bg-secondary);border:1px solid ${ok && !claimed ? '#00b894' : 'var(--border)'};border-radius:10px;padding:10px;">
+    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${m.icon} ${m.name}</div>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${m.desc}</div>
+    <div style="margin-top:6px;">${btn}</div>
+  </div>`;
 }
 
 function igBuyGold(id) {
