@@ -1,0 +1,2199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GameHub - 游戏交流社区</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg-primary: #0d0f14;
+    --bg-secondary: #161922;
+    --bg-card: #1c2030;
+    --border: #2a2f42;
+    --text-primary: #eef0f5;
+    --text-secondary: #8a8fa3;
+    --accent: #6c5ce7;
+    --accent-light: #a29bfe;
+    --cyan: #00cec9;
+    --pink: #ff6b81;
+    --green: #00b894;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ===== 顶部导航 ===== */
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13, 15, 20, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .logo {
+    font-size: 22px; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    white-space: nowrap;
+  }
+  .search-box {
+    flex: 1; max-width: 480px;
+    position: relative;
+  }
+  .search-box input {
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 16px 9px 40px;
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text-secondary); }
+  .search-icon {
+    position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    width: 16px; height: 16px;
+  }
+  .nav-actions {
+    display: flex; align-items: center; gap: 16px;
+    margin-left: auto;
+  }
+  .btn-post {
+    background: linear-gradient(135deg, var(--accent), #8b7cf7);
+    color: #fff; border: none;
+    padding: 9px 20px;
+    border-radius: 10px;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-post:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(108,92,231,.4); }
+  .avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--pink), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; color: #fff;
+    cursor: pointer;
+  }
+
+  /* ===== Hero 区 ===== */
+  .hero {
+    padding: 40px 24px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .hero h1 {
+    font-size: 28px; font-weight: 800;
+    margin-bottom: 8px;
+  }
+  .hero p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 20px;
+  }
+  .game-tags {
+    display: flex; flex-wrap: wrap; gap: 10px;
+  }
+  .game-tag {
+    padding: 7px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .game-tag:hover { border-color: var(--accent); color: var(--text-primary); }
+  .game-tag.active {
+    background: rgba(108,92,231,.15);
+    border-color: var(--accent);
+    color: var(--accent-light);
+  }
+
+  /* ===== 主布局 ===== */
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 20px 24px 60px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-secondary);
+  }
+  .empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+
+  /* ===== 帖子卡片 ===== */
+  .post-list { display: flex; flex-direction: column; gap: 16px; }
+  .post-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    transition: border-color .2s, transform .2s;
+    cursor: pointer;
+  }
+  .post-card:hover { border-color: #3a4060; }
+  .post-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .post-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; color: #fff;
+    flex-shrink: 0;
+  }
+  .pa1 { background: linear-gradient(135deg, #ff6b81, #ff9f43); }
+  .pa2 { background: linear-gradient(135deg, #6c5ce7, #a29bfe); }
+  .pa3 { background: linear-gradient(135deg, #00cec9, #55efc4); }
+  .pa4 { background: linear-gradient(135deg, #fd79a8, #e84393); }
+  .pa5 { background: linear-gradient(135deg, #00b894, #00cec9); }
+  .pa6 { background: linear-gradient(135deg, #e17055, #fdcb6e); }
+  .post-user { font-size: 14px; font-weight: 600; }
+  .post-time { font-size: 12px; color: var(--text-secondary); }
+  .post-game-badge {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: rgba(0,206,201,.12);
+    color: var(--cyan);
+  }
+  .post-title {
+    font-size: 17px; font-weight: 700;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .post-excerpt {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    line-height: 1.6;
+  }
+  .post-footer {
+    display: flex; align-items: center; gap: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .post-action {
+    display: flex; align-items: center; gap: 6px;
+    cursor: pointer;
+    transition: color .2s;
+  }
+  .post-action:hover { color: var(--text-primary); }
+  .post-action.liked { color: var(--pink); }
+  .post-action svg { width: 16px; height: 16px; }
+
+  /* ===== 侧边栏 ===== */
+  .sidebar { display: flex; flex-direction: column; gap: 20px; }
+  .side-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .side-title {
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .rank-list { display: flex; flex-direction: column; gap: 12px; }
+  .rank-item {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px;
+  }
+  .rank-num {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .rank-item:nth-child(1) .rank-num { background: #ff6b81; color: #fff; }
+  .rank-item:nth-child(2) .rank-num { background: #fd9644; color: #fff; }
+  .rank-item:nth-child(3) .rank-num { background: #feca57; color: #1a1d29; }
+  .rank-name { flex: 1; }
+  .rank-count { color: var(--text-secondary); font-size: 12px; }
+
+  .online-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+  }
+  .online-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+  .online-item span { flex: 1; }
+  .online-count { color: var(--text-secondary); font-size: 12px; }
+
+  /* ===== 登录弹窗 ===== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.7);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 300;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 90%; max-width: 380px;
+  }
+  .modal h2 {
+    font-size: 22px; font-weight: 800;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .modal .sub {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent), #8b7cf7);
+    color: #fff; border: none;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(108,92,231,.4); }
+  .switch-mode {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .switch-mode span {
+    color: var(--accent-light);
+    cursor: pointer;
+  }
+  .close-modal {
+    position: absolute;
+    top: 16px; right: 20px;
+    background: none; border: none;
+    color: var(--text-secondary);
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .modal { position: relative; }
+
+  /* ===== 用户菜单 ===== */
+  .user-menu {
+    position: absolute;
+    top: 56px; right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    min-width: 160px;
+    display: none;
+    z-index: 150;
+  }
+  .user-menu.show { display: block; }
+  .user-menu-item {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .user-menu-item:hover { background: var(--bg-secondary); }
+  .user-menu-item.logout { color: var(--pink); }
+  .nav-actions { position: relative; }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed; bottom: 32px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 14px;
+    opacity: 0;
+    transition: all .3s;
+    z-index: 200;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== 内嵌游戏：愚公移山 ===== */
+  .game-view { display: none; }
+  .game-view.show { display: block; }
+
+  .ig-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ig-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .ig-stat-label { font-size: 12px; color: var(--text-secondary); }
+  .ig-stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+  .ig-stat-sub { font-size: 12px; color: var(--green); margin-top: 4px; }
+
+  .ig-progress {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .ig-progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .ig-progress-bar {
+    height: 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    position: relative;
+    overflow: visible;
+  }
+  .ig-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--cyan));
+    border-radius: 8px;
+    width: 0%;
+    transition: width .3s;
+  }
+  .ig-ticks {
+    position: absolute; inset: 0;
+  }
+  .ig-ticks div {
+    position: absolute; top: -2px; bottom: -2px;
+    width: 2px; background: var(--border);
+  }
+  .ig-rewards {
+    display: flex; justify-content: space-between;
+    margin-top: 10px;
+  }
+  .ig-reward {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .ig-reward small { display: block; color: #f1c40f; }
+  .ig-reward.claimed { color: var(--green); }
+  .ig-reward.claimed small { color: var(--green); }
+
+  .ig-dig-area { text-align: center; margin: 24px 0; }
+  .ig-btn-dig {
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #5a4a3a, #3a2f25);
+    border: 4px solid #4a3f30;
+    color: #fff;
+    font-size: 18px; font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+    transition: transform .08s;
+    font-family: inherit;
+  }
+  .ig-btn-dig:active { transform: scale(.94); }
+  .ig-btn-dig small { display: block; font-size: 12px; font-weight: 400; margin-top: 4px; opacity: .8; }
+
+  .ig-shop-title {
+    font-size: 15px; font-weight: 700;
+    margin: 20px 0 10px;
+    color: var(--text-primary);
+  }
+  .ig-shop-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .ig-shop-icon {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .ig-shop-info { flex: 1; }
+  .ig-shop-name { font-size: 14px; font-weight: 600; }
+  .ig-shop-desc { font-size: 12px; color: var(--text-secondary); }
+  .ig-shop-btn {
+    background: var(--accent);
+    color: #fff; border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .ig-shop-btn:disabled { background: #3a3f52; cursor: not-allowed; }
+  .ig-win {
+    display: none;
+    background: linear-gradient(135deg, #f39c12, #e74c3c);
+    color: #fff;
+    text-align: center;
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  .ig-win.show { display: block; }
+  .ig-float {
+    position: fixed;
+    pointer-events: none;
+    font-size: 18px; font-weight: 700;
+    color: var(--accent-light);
+    animation: igFloatUp 1s ease-out forwards;
+    z-index: 200;
+  }
+  @keyframes igFloatUp {
+    0% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-50px); }
+  }
+
+  /* 山选择标签 */
+  .ig-mountain-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 16px;
+  }
+  .ig-m-tab {
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .ig-m-tab.active {
+    background: rgba(108,92,231,.15);
+    border-color: var(--accent);
+    color: var(--accent-light);
+  }
+  .ig-m-tab.locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ===== 个人中心弹窗 ===== */
+  .profile-avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 700; color: #fff;
+  }
+  .profile-name {
+    text-align: center;
+    font-size: 18px; font-weight: 700;
+    margin-bottom: 20px;
+  }
+  .profile-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .profile-stat {
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  .profile-stat-num { font-size: 18px; font-weight: 700; }
+  .profile-stat-label { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* 评论区 */
+  .post-card.expanded .post-comments { display: block; }
+  .post-comments { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .comment-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .comment-item:last-child { border-bottom: none; }
+  .comment-user { font-weight: 600; margin-bottom: 4px; }
+  .comment-user span { color: var(--text-secondary); font-weight: 400; font-size: 11px; margin-left: 8px; }
+  .comment-input-row { display: flex; gap: 8px; margin-top: 10px; }
+  .comment-input-row input {
+    flex: 1; background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; color: var(--text-primary);
+    font-size: 13px; outline: none;
+  }
+  .comment-input-row input:focus { border-color: var(--accent); }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 900px) {
+    .container { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .search-box { display: none; }
+    .hero h1 { font-size: 22px; }
+    .navbar { padding: 0 16px; gap: 12px; }
+    .hero { padding: 24px 16px 16px; }
+    .container { padding: 16px 16px 40px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 顶部导航 ===== -->
+<nav class="navbar">
+  <div class="logo">GameHub</div>
+  <div class="search-box">
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input type="text" id="searchInput" placeholder="搜索游戏、话题或玩家...">
+  </div>
+  <div class="nav-actions">
+    <button class="btn-post" id="btnPost" onclick="onPostClick()">+ 发帖</button>
+    <div style="position:relative;">
+      <div class="avatar" id="navAvatar" title="点击查看菜单" onclick="toggleUserMenu()">我</div>
+      <div class="user-menu" id="userMenu">
+        <div class="user-menu-item" onclick="openProfile()">个人中心</div>
+        <div class="user-menu-item" onclick="openMyPosts()">我的帖子</div>
+        <div class="user-menu-item logout" onclick="logout()">切换账号</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<section class="hero">
+  <h1>和百万玩家一起，聊你爱的游戏</h1>
+  <p>讨论攻略、晒出战绩、找到同好 —— 你的游戏社区</p>
+  <div class="game-tags" id="gameTags">
+    <div class="game-tag active" data-game="全部">全部</div>
+    <div class="game-tag" data-game="愚公移山">愚公移山</div>
+    <div class="game-tag" data-game="STS">杀戮尖塔</div>
+    <div class="game-tag" data-game="游戏3">游戏3</div>
+    <div class="game-tag" data-game="游戏4">游戏4</div>
+    <div class="game-tag" data-game="游戏5">游戏5</div>
+    <div class="game-tag" data-game="游戏6">游戏6</div>
+  </div>
+</section>
+
+<!-- ===== 主内容 ===== -->
+<div class="container">
+  <!-- 帖子视图 -->
+  <div class="post-list" id="postList">
+    <div class="empty-state">
+      <h3>还没有帖子</h3>
+      <p>点击右上角「发帖」发布第一条内容吧</p>
+    </div>
+  </div>
+
+  <!-- 游戏视图：杀戮尖塔网页版 -->
+  <div class="game-view" id="gameInfoView">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <span style="color:var(--text-secondary);font-size:13px;">杀戮尖塔网页版（由第三方提供）</span>
+      <a href="https://slaytheweb.cards" target="_blank" rel="noopener" style="margin-left:auto;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:6px 14px;border-radius:10px;text-decoration:none;font-size:13px;">在新标签页打开 ↗</a>
+    </div>
+    <iframe src="https://slaytheweb.cards" style="width:100%;height:85vh;border:none;border-radius:10px;background:#1a1a2e;"></iframe>
+    <div style="margin-top:10px;font-size:12px;color:var(--text-secondary);">
+      若上方游戏区域空白，说明当前托管平台拦截了第三方嵌入，请点击右上角「在新标签页打开」按钮直接游玩。
+    </div>
+  </div>
+
+  <!-- 游戏视图：愚公移山 -->
+  <div class="game-view" id="gameView">
+    <!-- 山选择标签 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="ig-mountain-tabs" id="igMountainTabs" style="margin-bottom:0;"></div>
+      <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="document.getElementById('adminPanel').classList.add('show')">后台</button>
+    </div>
+    <div class="ig-win" id="igWin">这座山已挖平！</div>
+    <div class="ig-stats" style="grid-template-columns:1fr 1fr 1fr;">
+      <div class="ig-stat">
+        <div class="ig-stat-label">已挖土方</div>
+        <div class="ig-stat-value" id="igSoil">0</div>
+      </div>
+      <div class="ig-stat">
+        <div class="ig-stat-label">金币</div>
+        <div class="ig-stat-value" id="igCoins" style="color:#f1c40f;">0</div>
+      </div>
+      <div class="ig-stat">
+        <div class="ig-stat-label">每秒产出</div>
+        <div class="ig-stat-value" id="igCps" style="color:var(--green);font-size:20px;">0/秒</div>
+      </div>
+    </div>
+
+    <div class="ig-progress">
+      <div class="ig-progress-label">
+        <span id="igStage">山脚</span>
+        <span id="igPct">0%</span>
+      </div>
+      <div class="ig-progress-bar">
+        <div class="ig-progress-fill" id="igBar"></div>
+        <div class="ig-ticks">
+          <div style="left:25%"></div><div style="left:50%"></div><div style="left:75%"></div>
+        </div>
+      </div>
+      <div class="ig-rewards">
+        <div class="ig-reward" id="rw25"><span>25%</span><small>+100金币</small></div>
+        <div class="ig-reward" id="rw50"><span>50%</span><small>+300金币</small></div>
+        <div class="ig-reward" id="rw75"><span>75%</span><small>+800金币</small></div>
+        <div class="ig-reward" id="rw100"><span>100%</span><small>+2000金币</small></div>
+      </div>
+    </div>
+    <div class="ig-dig-area" style="display:flex;gap:12px;justify-content:center;align-items:center;">
+      <button class="ig-btn-dig" onclick="igDig(event)">
+        挖一锄
+        <small id="igClickPow">+1</small>
+      </button>
+      <button class="ig-btn-dig" id="igSkillBtn" style="background:linear-gradient(135deg,#e67e22,#d35400);" onclick="igSkill()">
+        全村突击
+        <small id="igSkillCd">就绪</small>
+      </button>
+    </div>
+    <div class="ig-shop-title" style="color:#e74c3c;">Boss山</div>
+    <div id="igBoss"></div>
+
+    <div class="ig-shop-title">招募子弟</div>
+    <div id="igGens"></div>
+    <div class="ig-shop-title">打造工具</div>
+    <div id="igTools"></div>
+
+    <div class="ig-shop-title" style="color:#f1c40f;">金币商店</div>
+    <div id="igGoldShop"></div>
+
+    <div class="ig-shop-title" style="color:#2ecc71;">每日任务</div>
+    <div id="igDaily"></div>
+
+    <div class="ig-shop-title" style="color:#e67e22;">成就</div>
+    <div id="igAchievements"></div>
+  </div>
+</div>
+
+<!-- ===== 登录/注册弹窗 ===== -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <button class="close-modal" onclick="closeAuth()">&times;</button>
+    <h2 id="authTitle">欢迎回来</h2>
+    <div class="sub" id="authSub">登录你的 GameHub 账号</div>
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="authUser" placeholder="输入用户名">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="authPass" placeholder="输入密码">
+    </div>
+    <button class="btn-primary" onclick="handleAuth()">登录</button>
+    <div class="switch-mode">
+      还没有账号？<span onclick="switchMode()">立即注册</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 个人中心弹窗 ===== -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal" style="max-width:400px;">
+    <button class="close-modal" onclick="document.getElementById('profileModal').classList.remove('show')">&times;</button>
+    <div class="profile-avatar" id="pfAvatar">我</div>
+    <div class="profile-name" id="pfName">用户名</div>
+    <div class="profile-stats">
+      <div class="profile-stat">
+        <div class="profile-stat-num" id="pfCoins">0</div>
+        <div class="profile-stat-label">金币</div>
+      </div>
+      <div class="profile-stat">
+        <div class="profile-stat-num" id="pfSoil">0</div>
+        <div class="profile-stat-label">总挖土方</div>
+      </div>
+      <div class="profile-stat">
+        <div class="profile-stat-num" id="pfMountains">0</div>
+        <div class="profile-stat-label">已挖山</div>
+      </div>
+    </div>
+    <div id="pfMountainList"></div>
+  </div>
+</div>
+
+<!-- ===== 游戏后台面板 ===== -->
+<div class="modal-overlay" id="adminPanel">
+  <div class="modal" style="max-width:420px;">
+    <button class="close-modal" onclick="document.getElementById('adminPanel').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">游戏后台</h2>
+    <div class="sub" style="text-align:left;margin-bottom:16px;">直接修改游戏数据</div>
+
+    <div class="form-group">
+      <label>土方余额</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admSoil" placeholder="输入土方数">
+        <button class="ig-shop-btn" onclick="admSetSoil()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>金币</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admCoins" placeholder="输入金币数">
+        <button class="ig-shop-btn" onclick="admSetCoins()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>当前山进度</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admProgress" placeholder="输入进度土方">
+        <button class="ig-shop-btn" onclick="admSetProgress()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>点击威力</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admClick" placeholder="每次点击土方">
+        <button class="ig-shop-btn" onclick="admSetClick()">设置</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <button class="ig-shop-btn" style="background:#f1c40f;color:#333;" onclick="admUnlockAll()">解锁所有山</button>
+      <button class="ig-shop-btn" style="background:#f1c40f;color:#333;" onclick="admMaxProgress()">当前山直接挖满</button>
+      <button class="ig-shop-btn" style="background:#e74c3c;" onclick="admReset()">清空游戏存档</button>
+    </div>
+
+    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">用户管理</div>
+      <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;">
+        <span>注册用户：<b id="admUserCount">0</b></span>
+        <span>当前在线：<b id="admOnlineCount" style="color:var(--green);">0</b></span>
+      </div>
+      <div id="admUserList" style="max-height:160px;overflow-y:auto;font-size:13px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 发帖弹窗 ===== -->
+<div class="modal-overlay" id="postModal">
+  <div class="modal" style="max-width:500px;">
+    <button class="close-modal" onclick="closePost()">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">发布新帖</h2>
+    <div class="sub" style="text-align:left;margin-bottom:16px;">分享你的游戏心得</div>
+    <div class="form-group">
+      <label>选择游戏</label>
+      <select id="postGame" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text-primary);font-size:14px;outline:none;">
+        <option value="愚公移山">愚公移山</option>
+        <option value="游戏2">游戏2</option>
+        <option value="游戏3">游戏3</option>
+        <option value="游戏4">游戏4</option>
+        <option value="游戏5">游戏5</option>
+        <option value="游戏6">游戏6</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>标题</label>
+      <input type="text" id="postTitle" placeholder="给帖子起个标题">
+    </div>
+    <div class="form-group">
+      <label>内容</label>
+      <textarea id="postContent" rows="5" placeholder="想说点什么..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text-primary);font-size:14px;outline:none;font-family:inherit;resize:vertical;"></textarea>
+    </div>
+    <button class="btn-primary" onclick="submitPost()">发布</button>
+  </div>
+</div>
+
+<!-- ===== 我的帖子弹窗 ===== -->
+<div class="modal-overlay" id="myPostsModal">
+  <div class="modal" style="max-width:560px;max-height:80vh;overflow-y:auto;">
+    <button class="close-modal" onclick="document.getElementById('myPostsModal').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">我的帖子</h2>
+    <div class="sub" style="text-align:left;margin-bottom:16px;">管理你发布的内容</div>
+    <div id="myPostsList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// 数据本地保存于浏览器（localStorage）；帖子通过 Supabase REST 云端同步，实现跨设备共享
+let toastTimer; // 提前声明，避免 showToast 在脚本初始化完成前被调用时报错
+let cloudPosts = []; // 提前声明，供 init 中 loadPosts/renderPosts 使用（帖子）
+let currentGame = "全部"; // 提前声明，供 init 中 renderPosts 使用
+let likedPosts = new Set(); // 提前声明，供 init 中 renderPosts 使用
+// ===== 云端（Supabase REST）：帖子跨设备共享（不依赖外部CDN，直接用 fetch） =====
+const SUPABASE_URL = 'https://ycxasrnnvwhcvzkmwhxu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qALYuuKrijmsInYREJ8xyw_qkYJ8G7I';
+let sb = null;
+try { if (typeof supabase !== 'undefined') sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) { sb = null; }
+async function supabaseRest(method, table, query, body) {
+  const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (query ? '?' + query : ''), opts);
+  if (!r.ok) throw new Error('云端返回 ' + r.status);
+  return r.status === 204 ? null : r.json();
+}
+(async function init() {
+  await loadPosts();
+  await loadComments();
+  renderPosts();
+})();
+// ===== 账号系统（本地存储） =====
+let isLoginMode = true; // true=登录, false=注册
+let currentUser = null;
+let authBusy = false; // 防止重复提交
+
+// 简单字符串哈希（避免明文存密码）
+function simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h) + str.charCodeAt(i);
+    h |= 0;
+  }
+  return 'h' + Math.abs(h).toString(36);
+}
+
+function getUsers() {
+  try {
+    const raw = localStorage.getItem('gh_users');
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function saveUsers(users) {
+  localStorage.setItem('gh_users', JSON.stringify(users));
+}
+function getCurrentUser() {
+  try {
+    const raw = localStorage.getItem('gh_current');
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    // 校验：确认这个用户在用户列表里还存在（防止手动改localStorage）
+    if (!u || !u.name) return null;
+    const users = getUsers();
+    const real = users.find(x => x.lname === (u.lname || u.name.toLowerCase()));
+    return real ? Object.assign({}, real, { avatarColor: real.avatar_color }) : null;
+  } catch { return null; }
+}
+function setCurrentUser(u) {
+  localStorage.setItem('gh_current', JSON.stringify(u));
+}
+
+function openAuth() {
+  document.getElementById('authModal').classList.add('show');
+  setTimeout(() => document.getElementById('authUser').focus(), 100);
+}
+function closeAuth() {
+  document.getElementById('authModal').classList.remove('show');
+  document.getElementById('authUser').value = '';
+  document.getElementById('authPass').value = '';
+  authBusy = false;
+}
+function switchMode() {
+  isLoginMode = !isLoginMode;
+  document.getElementById('authTitle').textContent = isLoginMode ? '欢迎回来' : '创建账号';
+  document.getElementById('authSub').textContent = isLoginMode ? '登录你的 GameHub 账号' : '注册后即可发帖交流';
+  document.querySelector('.btn-primary').textContent = isLoginMode ? '登录' : '注册';
+  document.querySelector('.switch-mode').innerHTML = isLoginMode
+    ? '还没有账号？<span onclick="switchMode()">立即注册</span>'
+    : '已有账号？<span onclick="switchMode()">去登录</span>';
+  document.getElementById('authUser').value = '';
+  document.getElementById('authPass').value = '';
+}
+
+// 校验用户名：只允许中文、字母、数字、下划线，2-16位
+function validateUsername(u) {
+  if (u.length < 2) return '用户名至少2个字符';
+  if (u.length > 16) return '用户名最多16个字符';
+  if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(u)) return '用户名只能含中文、字母、数字、下划线';
+  return null;
+}
+function validatePassword(p) {
+  if (p.length < 4) return '密码至少4位';
+  if (p.length > 32) return '密码最多32位';
+  return null;
+}
+
+// 云端账号查询/创建（localStorage 仅作离线兜底）
+async function cloudGetUser(lname) {
+  try {
+    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&limit=1');
+    return (rows && rows[0]) || null;
+  } catch(e) { return null; }
+}
+async function cloudCreateUser(u) {
+  try { await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color }); return true; }
+  catch(e) { return false; }
+}
+function ensureLocalUser(u) {
+  const users = getUsers();
+  if (!users.find(x => x.lname === u.lname)) {
+    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color });
+    saveUsers(users);
+  }
+}
+
+async function handleAuth() {
+  if (authBusy) return;
+  const u = document.getElementById('authUser').value.trim();
+  const p = document.getElementById('authPass').value;
+  const userErr = validateUsername(u);
+  if (userErr) { showToast(userErr); return; }
+  const passErr = validatePassword(p);
+  if (passErr) { showToast(passErr); return; }
+
+  authBusy = true;
+  const btn = document.querySelector('.btn-primary');
+  btn.textContent = '请稍候...';
+  btn.style.opacity = '0.7';
+
+  const lname = u.toLowerCase();
+  const hash = simpleHash(p);
+
+  try {
+    if (isLoginMode) {
+      let user = await cloudGetUser(lname);
+      if (!user) { const ls = getUsers(); user = ls.find(x => x.lname === lname); }
+      if (!user) { showToast('该用户名不存在，请先注册'); }
+      else if (user.password_hash !== hash && user.hash !== hash) { showToast('密码错误，请重新输入'); }
+      else {
+        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color };
+        setCurrentUser(currentUser);
+        ensureLocalUser(currentUser);
+        updateNavUser();
+        closeAuth();
+        await igLoad();
+        igRender();
+        showToast('登录成功，欢迎 ' + currentUser.name);
+        cloudHeartbeat(currentUser.name);
+        return;
+      }
+    } else {
+      let exists = await cloudGetUser(lname);
+      if (!exists) { const ls = getUsers(); exists = ls.find(x => x.lname === lname); }
+      if (exists) { showToast('该用户名已被注册'); }
+      else {
+        const avatarColor = 'hsl(' + Math.floor(Math.random()*360) + ',65%,55%)';
+        const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor };
+        const ok = await cloudCreateUser(newUser);
+        ensureLocalUser(newUser);
+        currentUser = newUser;
+        setCurrentUser(currentUser);
+        updateNavUser();
+        closeAuth();
+        igState = null;
+        await igLoad();
+        igRender();
+        showToast(ok ? '注册成功，账号已同步云端' : '注册成功（云端暂不可用，已存本机）');
+        cloudHeartbeat(currentUser.name);
+        return;
+      }
+    }
+  } catch (e) {
+    showToast('注册/登录失败，请重试');
+  }
+  authBusy = false;
+  btn.textContent = isLoginMode ? '登录' : '注册';
+  btn.style.opacity = '';
+}
+
+function updateNavUser() {
+  const avatar = document.getElementById('navAvatar');
+  if (currentUser && currentUser.name) {
+    avatar.textContent = currentUser.name[0].toUpperCase();
+    avatar.style.background = currentUser.avatarColor || 'linear-gradient(135deg, #ff6b81, #a29bfe)';
+  } else {
+    avatar.textContent = '?';
+    avatar.style.background = 'var(--bg-secondary)';
+    avatar.style.color = 'var(--text-secondary)';
+  }
+}
+
+function toggleUserMenu() {
+  const menu = document.getElementById('userMenu');
+  if (!currentUser) { openAuth(); return; }
+  menu.classList.toggle('show');
+}
+
+function logout() {
+  const prev = currentUser;
+  currentUser = null;
+  setCurrentUser(null);
+  if (prev) cloudOffline(prev.name);
+  updateNavUser();
+  document.getElementById('userMenu').classList.remove('show');
+  document.getElementById('authUser').value = '';
+  document.getElementById('authPass').value = '';
+  loadLiked();
+  igLoad(); // 切回游客空存档
+  showToast('请登录其他账号');
+}
+
+// 个人中心
+function openProfile() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('userMenu').classList.remove('show');
+
+  document.getElementById('pfName').textContent = currentUser.name;
+  const av = document.getElementById('pfAvatar');
+  av.textContent = currentUser.name[0].toUpperCase();
+  av.style.background = currentUser.avatarColor || 'linear-gradient(135deg,#ff6b81,#a29bfe)';
+
+  // 愚公移山统计
+  const coins = igState.coins || 0;
+  let totalSoil = 0, doneMountains = 0;
+  const mountainListHtml = IG_MOUNTAINS.map(m=>{
+    const md = igState.mountains[m.id] || {progress:0};
+    totalSoil += md.progress;
+    const pct = Math.min(100, md.progress/m.total*100);
+    if (md.progress >= m.total) doneMountains++;
+    return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span>${m.name}</span>
+      <span style="color:${pct>=100?'var(--green)':'var(--text-secondary)'}">${pct.toFixed(1)}%${pct>=100?' ✓':''}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('pfCoins').textContent = igFmt(coins);
+  document.getElementById('pfSoil').textContent = igFmt(totalSoil);
+  document.getElementById('pfMountains').textContent = doneMountains + '/' + IG_MOUNTAINS.length;
+  document.getElementById('pfMountainList').innerHTML =
+    '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">游戏进度</div>' + mountainListHtml;
+
+  document.getElementById('profileModal').classList.add('show');
+}
+
+// 点击弹窗外部关闭
+document.getElementById('profileModal').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+
+// 回车提交
+document.getElementById('authPass').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleAuth();
+});
+document.getElementById('authUser').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('authPass').focus();
+});
+
+// ===== 发帖功能（云端共享 + 本地兜底） =====
+function loadPosts() {
+  try { cloudPosts = JSON.parse(localStorage.getItem('gh_posts') || '[]'); }
+  catch { cloudPosts = []; }
+  supabaseRest('GET', 'posts', 'select=*&order=created_at.desc')
+    .then(data => {
+      cloudPosts = data || [];
+      try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+      renderPosts();
+    })
+    .catch(() => { /* 云端不可用则保留本地缓存 */ });
+}
+function getPosts() { return cloudPosts; }
+async function savePostToCloud(p) {
+  const localPost = {
+    id: 'local_' + Date.now() + Math.floor(Math.random()*1000),
+    user_name: p.user,
+    avatar_color: p.avatarColor,
+    game: p.game,
+    title: p.title,
+    content: p.excerpt,
+    likes: 0,
+    created_at: new Date().toISOString()
+  };
+  cloudPosts.unshift(localPost);
+  try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+  renderPosts();
+  try {
+    await supabaseRest('POST', 'posts', '', { user_name: p.user, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, likes: 0 });
+    showToast('已发布并同步到云端');
+    loadPosts();
+  } catch(e) {
+    showToast('云端暂不可用，已保存到本机');
+  }
+}
+
+function onPostClick() {
+  if (!currentUser) { showToast('请先登录后再发帖'); openAuth(); return; }
+  document.getElementById('postModal').classList.add('show');
+}
+function closePost() {
+  document.getElementById('postModal').classList.remove('show');
+  document.getElementById('postTitle').value = '';
+  document.getElementById('postContent').value = '';
+}
+async function submitPost() {
+  const title = document.getElementById('postTitle').value.trim();
+  const content = document.getElementById('postContent').value.trim();
+  const game = document.getElementById('postGame').value;
+  if (!title) { showToast('请输入标题'); return; }
+  if (!content) { showToast('请输入内容'); return; }
+  await savePostToCloud({
+    user: currentUser.name,
+    avatarColor: currentUser.avatarColor || '#6c5ce7',
+    game: game,
+    title: title,
+    excerpt: content
+  });
+  closePost();
+  showToast('发布成功');
+  await loadPosts();
+  renderPosts();
+}
+document.getElementById('postModal').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) closePost();
+});
+
+// 我的帖子
+function openMyPosts() {
+  if (!currentUser) { showToast('请先登录'); openAuth(); return; }
+  document.getElementById('userMenu').classList.remove('show');
+  const all = getPosts();
+  const my = all.filter(p => (p.user_name || p.user) === currentUser.name);
+  const list = document.getElementById('myPostsList');
+  if (my.length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">你还没有发过帖子</div>';
+  } else {
+    list.innerHTML = my.map(p=>{
+      const excerpt = p.content || p.excerpt || '';
+      return `
+      <div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div style="flex:1;">
+            <div style="font-weight:600;margin-bottom:4px;">${p.title}</div>
+            <div style="font-size:12px;color:var(--text-secondary);">${p.game}</div>
+            <div style="font-size:13px;margin-top:6px;color:var(--text-secondary);">${excerpt.slice(0,80)}${excerpt.length>80?'...':''}</div>
+          </div>
+          <button class="ig-shop-btn" style="background:#e74c3c;margin-left:12px;" onclick="deletePost(${p.id})">删除</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('myPostsModal').classList.add('show');
+}
+async function deletePost(pid) {
+  if (!confirm('确定删除这条帖子吗？')) return;
+  if (!pid) { showToast('删除失败'); return; }
+  cloudPosts = cloudPosts.filter(p => String(p.id) !== String(pid));
+  try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+  if (!String(pid).startsWith('local_')) {
+    try { await supabaseRest('DELETE', 'posts', 'id=eq.' + pid); } catch(e) {}
+  }
+  showToast('已删除');
+  openMyPosts();
+  renderPosts();
+}
+document.getElementById('myPostsModal').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+
+// 点击弹窗外部关闭
+document.getElementById('authModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeAuth();
+});
+// 点击页面其他地方关闭用户菜单
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.nav-actions')) {
+    document.getElementById('userMenu').classList.remove('show');
+  }
+});
+
+// 页面加载时检查登录状态
+currentUser = getCurrentUser();
+updateNavUser();
+loadLiked();
+if (currentUser) cloudHeartbeat(currentUser.name);
+
+// ===== 帖子数据（初始为空） =====
+const posts = [];
+
+// 点赞状态按账号持久化到 localStorage
+function likedKey() { return 'gh_liked_' + (currentUser ? (currentUser.lname || currentUser.name.toLowerCase()) : 'guest'); }
+function loadLiked() {
+  try { likedPosts = new Set(JSON.parse(localStorage.getItem(likedKey()) || '[]')); }
+  catch { likedPosts = new Set(); }
+}
+function saveLiked() {
+  try { localStorage.setItem(likedKey(), JSON.stringify([...likedPosts])); } catch {}
+}
+
+// ===== 渲染帖子 =====
+function renderPosts() {
+  const list = document.getElementById('postList');
+  const expanded = new Set([...list.querySelectorAll('.post-card.expanded')].map(c => c.dataset.pid));
+  const all = getPosts();
+  const filtered = currentGame === "全部"
+    ? all
+    : all.filter(p => p.game === currentGame);
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <h3>${currentGame === "全部" ? "还没有帖子" : "该游戏下暂无帖子"}</h3>
+      <p>点击右上角「发帖」发布第一条内容吧</p>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map((p, i) => {
+    const pid = p.id != null ? String(p.id) : null;
+    const liked = pid ? likedPosts.has(pid) : false;
+    const comments = getComments(pid);
+    const uname = p.user_name || p.user || '匿名';
+    const ucolor = p.avatar_color || p.avatarColor || '#6c5ce7';
+    const excerpt = p.content || p.excerpt || '';
+    const ptime = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '刚刚';
+    return `
+    <div class="post-card" data-pid="${pid}" onclick="togglePost(this)">
+      <div class="post-header">
+        <div class="post-avatar" style="background:${ucolor}">${uname[0]}</div>
+        <div>
+          <div class="post-user">${uname}</div>
+          <div class="post-time">${ptime}</div>
+        </div>
+        <div class="post-game-badge">${p.game}</div>
+      </div>
+      <div class="post-title">${p.title}</div>
+      <div class="post-excerpt">${excerpt}</div>
+      <div class="post-footer">
+        <div class="post-action ${liked ? 'liked' : ''}" onclick="event.stopPropagation(); toggleLike(this, ${pid ? `'${pid}'` : 'null'})">
+          <svg viewBox="0 0 24 24" fill="${liked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+          <span>${p.likes || 0}</span>
+        </div>
+        <div class="post-action" onclick="event.stopPropagation(); togglePost(this.closest('.post-card'))">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>${comments.length}</span>
+        </div>
+      </div>
+      <div class="post-comments" onclick="event.stopPropagation()">
+        ${comments.map(c=>`
+          <div class="comment-item">
+            <div class="comment-user">${c.user}<span>${c.time}</span></div>
+            <div>${c.text}</div>
+          </div>
+        `).join('') || '<div style="color:var(--text-secondary);font-size:13px;padding:8px 0;">还没有评论，来抢沙发</div>'}
+        <div class="comment-input-row">
+          <input type="text" id="commentInput_${pid}" placeholder="写下你的评论...">
+          <button class="ig-shop-btn" onclick="submitComment('${pid}')">发送</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  // 恢复之前展开的帖子
+  list.querySelectorAll('.post-card').forEach(c => { if (expanded.has(c.dataset.pid)) c.classList.add('expanded'); });
+}
+
+function togglePost(card) {
+  card.classList.toggle('expanded');
+}
+
+// ===== 评论（云端 comments 表 + 本地兜底，按帖子ID关联） =====
+let commentsMap = {};
+async function loadComments() {
+  try { commentsMap = JSON.parse(localStorage.getItem('gh_comments_v2') || '{}'); } catch { commentsMap = {}; }
+  try {
+    const rows = await supabaseRest('GET', 'comments', 'select=*&order=created_at.desc&limit=1000');
+    const map = {};
+    (rows || []).forEach(c => {
+      (map[c.post_id] = map[c.post_id] || []).push({ user: c.user_name, text: c.content, time: '刚刚', cloud: true });
+    });
+    Object.keys(commentsMap).forEach(k => {
+      if (!map[k] || String(k).startsWith('local_')) map[k] = commentsMap[k];
+    });
+    commentsMap = map;
+    try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
+  } catch(e) {}
+}
+function getComments(pid) { return (commentsMap && commentsMap[pid]) || []; }
+async function saveComment(pid, text) {
+  if (!commentsMap) commentsMap = {};
+  if (!commentsMap[pid]) commentsMap[pid] = [];
+  commentsMap[pid].unshift({ user: currentUser ? currentUser.name : '匿名', text: text, time: '刚刚' });
+  try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
+  if (!String(pid).startsWith('local_')) {
+    try {
+      await supabaseRest('POST', 'comments', '', { post_id: pid, user_name: currentUser.name, content: text });
+    } catch(e) {}
+  }
+}
+function submitComment(pid) {
+  if (!currentUser) { showToast('请先登录再评论'); openAuth(); return; }
+  const input = document.getElementById('commentInput_' + pid);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  saveComment(pid, text);
+  showToast('评论成功');
+  renderPosts();
+}
+
+// ===== 云端自动刷新（跨设备实时看到新评论/点赞/帖子，无需手动刷新） =====
+let _cloudKey = '';
+async function refreshCloud() {
+  try {
+    const posts = await supabaseRest('GET', 'posts', 'select=*&order=created_at.desc&limit=200');
+    const comments = await supabaseRest('GET', 'comments', 'select=*&order=created_at.desc&limit=1000');
+    const key = JSON.stringify([
+      (posts || []).map(p => [p.id, p.likes || 0]),
+      (comments || []).map(c => [c.id, c.post_id, c.content])
+    ]);
+    if (key === _cloudKey) return; // 无变化则不重绘
+    _cloudKey = key;
+    cloudPosts = posts || [];
+    const map = {};
+    (comments || []).forEach(c => (map[c.post_id] = map[c.post_id] || []).push({ user: c.user_name, text: c.content, time: '刚刚', cloud: true }));
+    Object.keys(commentsMap).forEach(k => { if (!map[k] || String(k).startsWith('local_')) map[k] = commentsMap[k]; });
+    commentsMap = map;
+    // 正在输入评论时不重绘，避免光标丢失
+    const ae = document.activeElement;
+    if (ae && ae.id && String(ae.id).indexOf('commentInput_') === 0) return;
+    renderPosts();
+  } catch(e) {}
+}
+setInterval(refreshCloud, 4000);
+
+// ===== 点赞（持久化：本地记录 + 云端数字同步） =====
+async function toggleLike(el, pid) {
+  if (!currentUser) { showToast('请先登录再点赞'); openAuth(); return; }
+  if (!pid) { showToast('该帖子暂不支持云端点赞'); return; }
+  const key = String(pid);
+  const p = cloudPosts.find(x => String(x.id) === key);
+  if (likedPosts.has(key)) {
+    likedPosts.delete(key);
+    if (p) { p.likes = Math.max(0, (p.likes || 0) - 1); syncLikeCloud(p); }
+    showToast('已取消点赞');
+  } else {
+    likedPosts.add(key);
+    if (p) { p.likes = (p.likes || 0) + 1; syncLikeCloud(p); }
+    showToast('点赞成功');
+  }
+  saveLiked();
+  renderPosts();
+}
+function syncLikeCloud(p) {
+  const idx = cloudPosts.findIndex(x => String(x.id) === String(p.id));
+  if (idx >= 0) {
+    cloudPosts[idx].likes = p.likes;
+    try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+  }
+  if (!String(p.id).startsWith('local_')) {
+    try { supabaseRest('PATCH', 'posts', 'id=eq.' + p.id, { likes: p.likes }); } catch(e) {}
+  }
+}
+
+// ===== 游戏标签切换 =====
+document.getElementById('gameTags').addEventListener('click', (e) => {
+  if (e.target.classList.contains('game-tag')) {
+    document.querySelectorAll('.game-tag').forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+    currentGame = e.target.dataset.game;
+
+    // 愚公移山标签：显示游戏，隐藏帖子
+    if (currentGame === "愚公移山") {
+      if (!currentUser) {
+        showToast('请先登录后进入游戏');
+        openAuth();
+        document.querySelectorAll('.game-tag').forEach(t => t.classList.remove('active'));
+        document.querySelector('.game-tag[data-game="全部"]').classList.add('active');
+        currentGame = "全部";
+        return;
+      }
+      document.getElementById('postList').style.display = 'none';
+      document.getElementById('gameInfoView').classList.remove('show');
+      document.getElementById('gameView').classList.add('show');
+      igLoad();
+      igRender();
+    } else if (currentGame === "STS") {
+      document.getElementById('postList').style.display = 'none';
+      document.getElementById('gameView').classList.remove('show');
+      document.getElementById('gameInfoView').classList.add('show');
+    } else {
+      document.getElementById('postList').style.display = '';
+      document.getElementById('gameView').classList.remove('show');
+      document.getElementById('gameInfoView').classList.remove('show');
+      renderPosts();
+    }
+  }
+});
+
+// ===== 愚公移山内嵌游戏 =====
+// 多座山配置，以后加新山直接在这里加
+const IG_MOUNTAINS = [
+  { id: 'taihang', name: '太行山', total: 100000, unlockDesc: '初始开放' },
+  { id: 'wangwu', name: '王屋山', total: 500000, unlockAt: 'taihang', unlockDesc: '挖完太行山解锁' },
+  { id: 'third', name: '天柱山', total: 2000000, unlockAt: 'wangwu', unlockDesc: '挖完王屋山解锁' },
+  { id: 'kunlun', name: '昆仑山', total: 10000000, unlockAt: 'third', unlockDesc: '挖完天柱山解锁' },
+  { id: 'buzhou', name: '不周山', total: 50000000, unlockAt: 'kunlun', unlockDesc: '挖完昆仑山解锁' },
+];
+let igCurrentMountain = 'taihang'; // 当前挖的山
+let igState = {
+  soilBalance: 0,
+  mountains: {},
+  clickPower: 1,
+  gens: {},
+  tools: {},
+  coins: 0,
+  goldUp: {},
+  achievements: {}, // 已达成的成就
+  autoClicker: 0, // 自动点击器数量
+  totalClicks: 0, // 总点击次数
+  // Boss山
+  bossLevel: 0, bossKills: 0, bossBonus: 0,
+  bossState: 'idle', bossHp: 0, bossMax: 0, bossUntil: 0, bossCooldown: 0,
+};
+
+// 成就配置
+const IG_ACHIEVEMENTS = [
+  { id: 'click100', name: '初试锄手', desc: '累计点击100次', reward: 50, check: () => igState.totalClicks >= 100 },
+  { id: 'soil10k', name: '小有所成', desc: '累计挖1万土方', reward: 100, check: () => igMountainData().progress >= 10000 },
+  { id: 'gen10', name: '人丁兴旺', desc: '累计招募10个子孙', reward: 150, check: () => Object.values(igState.gens).reduce((a,b)=>a+b,0) >= 10 },
+  { id: 'mountain1', name: '开门第一功', desc: '挖完第一座山', reward: 500, check: () => igState.mountains.taihang && igState.mountains.taihang.progress >= IG_MOUNTAINS[0].total },
+  { id: 'click1000', name: '锄生茧子', desc: '累计点击1000次', reward: 300, check: () => igState.totalClicks >= 1000 },
+  { id: 'coins1k', name: '小富翁', desc: '累计持有1000金币', reward: 200, check: () => (igState.coins||0) >= 1000 },
+  { id: 'treasure5', name: '寻宝达人', desc: '累计挖到5次宝藏', reward: 300, check: () => (igState.treasures||0) >= 5 },
+  { id: 'mountain3', name: '开天辟地', desc: '挖完天柱山', reward: 1000, check: () => igState.mountains.third && igState.mountains.third.progress >= 2000000 },
+  { id: 'dailyAll', name: '勤能补拙', desc: '完成当天的全部每日任务', reward: 500, check: () => { const d = igDailyState(); return d.done.dclick && d.done.dsoil && d.done.dgen; } },
+];
+// 每日任务配置（每天 0 点刷新）
+const IG_DAILY = [
+  { id: 'dclick', name: '勤劳双手', icon: '👋', desc: '今日点击 50 次', target: 50, reward: 100, check: () => igDailyState().clicks >= 50 },
+  { id: 'dsoil', name: '开山动土', icon: '⛰️', desc: '今日挖 1 万土方', target: 10000, reward: 300, check: () => igDailyState().soil >= 10000 },
+  { id: 'dgen', name: '人丁兴旺', icon: '👪', desc: '今日招募 3 个子孙', target: 3, reward: 200, check: () => igDailyState().gens >= 3 },
+];
+function igDailyKey() { const d = new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function igDailyState() {
+  if (!igState.daily || igState.daily.date !== igDailyKey()) {
+    igState.daily = { date: igDailyKey(), clicks: 0, soil: 0, gens: 0, done: {} };
+  }
+  return igState.daily;
+}
+function igClaimDaily(id) {
+  const q = IG_DAILY.find(x=>x.id===id);
+  const ds = igDailyState();
+  if (!q || ds.done[id] || !q.check()) return;
+  ds.done[id] = true;
+  igState.coins = (igState.coins||0) + q.reward;
+  showToast('每日任务完成：' + q.name + ' +' + q.reward + '金币');
+  igRender(); igSave();
+}
+
+// 获取当前山的数据
+function igMountainData() {
+  if (!igState.mountains[igCurrentMountain]) {
+    igState.mountains[igCurrentMountain] = { progress: 0, claimed: {} };
+  }
+  return igState.mountains[igCurrentMountain];
+}
+// 山是否已解锁
+function igMountainUnlocked(m) {
+  if (!m.unlockAt) return true;
+  const prev = igState.mountains[m.unlockAt];
+  const prevCfg = IG_MOUNTAINS.find(x=>x.id===m.unlockAt);
+  return prev && prev.progress >= prevCfg.total;
+}
+
+// 金币商店配置
+const igGoldShop = [
+  { id: 'goldHoe', name: '金锄头', icon: '⛏️', cost: 200, desc: '点击威力 x2', type: 'clickMult', value: 2 },
+  { id: 'seal', name: '传国玉玺', icon: '📜', cost: 800, desc: '所有产出 x2', type: 'allMult', value: 2 },
+  { id: 'godson', name: '神仙徒弟', icon: '🧙', cost: 2000, desc: '+100/秒 固定产出', type: 'fixedCps', value: 100 },
+  { id: 'autoClick', name: '自动锄头', icon: '🤖', cost: 1500, desc: '自动每秒帮你挖5次', type: 'autoClick', value: 5 },
+  { id: 'immortal', name: '愚公显灵', icon: '✨', cost: 5000, desc: '点击威力 x5', type: 'clickMult', value: 5 },
+  { id: 'heaven', name: '天神助力', icon: '⚡', cost: 20000, desc: '所有产出 x3', type: 'allMult', value: 3 },
+  { id: 'earthquake', name: '地动山摇', icon: '🌋', cost: 50000, desc: '+1000/秒 固定产出', type: 'fixedCps', value: 1000 },
+  { id: 'godpower', name: '神力加持', icon: '💪', cost: 100000, desc: '点击威力 x10', type: 'clickMult', value: 10 },
+  { id: 'grandheaven', name: '九天神兵', icon: '🔱', cost: 300000, desc: '所有产出 x5', type: 'allMult', value: 5 },
+  { id: 'immortal2', name: '祖师爷降世', icon: '👴', cost: 1000000, desc: '自动点击 x10 + 点击威力 x10', type: 'autoClick', value: 50 },
+];
+
+// 分段奖励配置
+const igRewards = [
+  { pct: 25, coins: 100, id: 'rw25' },
+  { pct: 50, coins: 300, id: 'rw50' },
+  { pct: 75, coins: 800, id: 'rw75' },
+  { pct: 100, coins: 2000, id: 'rw100' },
+];
+const igStages = ['山脚', '山坡', '半山', '山顶', '登顶！'];
+
+const igGensCfg = [
+  { id: 'son', name: '儿子', icon: '👨', base: 15, cps: 0.5 },
+  { id: 'grandson', name: '孙子', icon: '👦', base: 80, cps: 2 },
+  { id: 'ggson', name: '曾孙', icon: '🧒', base: 400, cps: 8 },
+  { id: 'gggson', name: '玄孙', icon: '👶', base: 2000, cps: 30 },
+  { id: 'clan', name: '族人', icon: '👪', base: 10000, cps: 120 },
+];
+const igToolsCfg = [
+  { id: 'hoe', name: '木锄头', icon: '🪓', cost: 50, bonus: 1 },
+  { id: 'iron', name: '铁锄头', icon: '⛏️', cost: 300, bonus: 3 },
+  { id: 'hammer', name: '大铁锤', icon: '🔨', cost: 1500, bonus: 10 },
+  { id: 'bomb', name: '火药包', icon: '🧨', cost: 8000, bonus: 40 },
+];
+
+function igCost(base, n) { return Math.floor(base * Math.pow(1.15, n || 0)); }
+function igCps() {
+  let c = 0.2;
+  const gens = igState.gens || {};
+  igGensCfg.forEach(g => c += (gens[g.id]||0) * g.cps);
+  const gu = igState.goldUp || {};
+  igGoldShop.forEach(item => {
+    if (gu[item.id] && item.type === 'fixedCps') c += item.value;
+  });
+  igGoldShop.forEach(item => {
+    if (gu[item.id] && item.type === 'allMult') c *= item.value;
+  });
+  c *= 1 + (igState.bossBonus || 0); // Boss永久产出加成
+  return c;
+}
+function igClickDmg() {
+  let dmg = igState.clickPower || 1;
+  const gu = igState.goldUp || {};
+  igGoldShop.forEach(item => {
+    if (gu[item.id] && item.type === 'clickMult') dmg *= item.value;
+  });
+  return dmg;
+}
+function igFmt(n) {
+  if (n < 1000) return Math.floor(n).toString();
+  if (n < 1000000) return (n/1000).toFixed(1)+'k';
+  return (n/1000000).toFixed(2)+'M';
+}
+
+let igBuff = { mult: 1, until: 0 }; // 临时buff
+
+// ===== Boss 山 =====
+const IG_BOSS = {
+  baseHp: 50000,
+  hpGrowth: 2.2,
+  timeMs: 45000,
+  rewardBase: 500,
+  rewardGrowth: 1.6,
+  bonusPerKill: 0.1,
+  cooldownMs: 30000,
+};
+function bossMaxHp() { return Math.floor(IG_BOSS.baseHp * Math.pow(IG_BOSS.hpGrowth, igState.bossLevel || 0)); }
+function bossReward() { return Math.floor(IG_BOSS.rewardBase * Math.pow(IG_BOSS.rewardGrowth, igState.bossLevel || 0)); }
+function igSummonBoss() {
+  const now = Date.now();
+  if (igState.bossState === 'fighting') return;
+  if (now < (igState.bossCooldown || 0)) { showToast('Boss山还在蓄力，稍后再战'); return; }
+  igState.bossState = 'fighting';
+  igState.bossMax = bossMaxHp();
+  igState.bossHp = igState.bossMax;
+  igState.bossUntil = now + IG_BOSS.timeMs;
+  showToast('⚔️ Boss山出现了！45秒内击败它，赢取永久加成！');
+  igRender(); igSave();
+}
+function bossDamage(dmg) {
+  if (igState.bossState !== 'fighting') return;
+  igState.bossHp -= dmg;
+  if (igState.bossHp <= 0) {
+    igState.bossHp = 0;
+    const reward = bossReward();
+    igState.coins = (igState.coins || 0) + reward;
+    igState.bossKills = (igState.bossKills || 0) + 1;
+    igState.bossBonus = (igState.bossBonus || 0) + IG_BOSS.bonusPerKill;
+    igState.bossLevel = (igState.bossLevel || 0) + 1;
+    igState.bossState = 'idle';
+    igState.bossCooldown = Date.now() + IG_BOSS.cooldownMs;
+    showToast('🏆 击败Boss山！+' + reward + '金币，永久产出+10%');
+    igRender(); igSave();
+  }
+}
+
+function igDoDig() {
+  const now = Date.now();
+  const buffMult = now < igBuff.until ? igBuff.mult : 1;
+  const dmg = igClickDmg() * buffMult;
+  igState.soilBalance += dmg;
+  igMountainData().progress += dmg;
+  igState.totalClicks = (igState.totalClicks || 0) + 1;
+  bossDamage(dmg); // 点击同时攻击Boss山
+  // 每日任务计数
+  const ds = igDailyState();
+  ds.clicks++;
+  ds.soil += dmg;
+  // 挖到宝藏（小概率）
+  if (Math.random() < 0.0025) {
+    const gold = 10 + Math.floor(Math.random() * 40);
+    igState.coins = (igState.coins || 0) + gold;
+    igState.treasures = (igState.treasures || 0) + 1;
+    showToast('💎 挖到宝藏！+' + gold + ' 金币');
+  }
+  return dmg;
+}
+
+function igDig(e) {
+  const dmg = igDoDig();
+  const f = document.createElement('div');
+  f.className = 'ig-float';
+  f.textContent = '+' + dmg;
+  f.style.left = (e.clientX || window.innerWidth/2)+'px';
+  f.style.top = (e.clientY || window.innerHeight/2)+'px';
+  document.body.appendChild(f);
+  setTimeout(()=>f.remove(), 1000);
+  igRender();
+}
+
+// 主动技能：全村突击，CD60秒，瞬间获得30秒产出
+let igSkillReadyAt = 0;
+function igSkill() {
+  const now = Date.now();
+  if (now < igSkillReadyAt) return;
+  const c = igCps();
+  const gain = c * 30; // 30秒产出
+  igState.soilBalance += gain;
+  igMountainData().progress += gain;
+  igSkillReadyAt = now + 60000; // 60秒CD
+  showToast('全村突击！瞬间挖了 ' + igFmt(gain) + ' 土方');
+  igRender();
+  igSave();
+}
+
+function igBuyGen(id) {
+  const g = igGensCfg.find(x=>x.id===id);
+  const n = igState.gens[id]||0;
+  const cost = igCost(g.base, n);
+  if (igState.soilBalance < cost) return;
+  igState.soilBalance -= cost;
+  igState.gens[id] = n+1;
+  igDailyState().gens++;
+  igRender(); igSave();
+}
+function igBuyTool(id) {
+  const t = igToolsCfg.find(x=>x.id===id);
+  if (igState.tools[id] || igState.soilBalance < t.cost) return;
+  igState.soilBalance -= t.cost;
+  igState.tools[id] = true;
+  igState.clickPower += t.bonus;
+  igRender(); igSave();
+}
+
+function igGetCurrentMountain() {
+  // 找第一座未挖完的山
+  for (const m of IG_MOUNTAINS) {
+    const d = igState.mountains[m.id];
+    if (!d || d.progress < m.total) return m.id;
+  }
+  return IG_MOUNTAINS[IG_MOUNTAINS.length-1].id;
+}
+function igRenderMountainTabs() {
+  // 只显示未挖完的山，已挖完的隐藏
+  const visible = IG_MOUNTAINS.filter(m=>{
+    const d = igState.mountains[m.id];
+    return !d || d.progress < m.total;
+  });
+  document.getElementById('igMountainTabs').innerHTML = visible.map(m=>{
+    const unlocked = igMountainUnlocked(m);
+    return `<div class="ig-m-tab ${igCurrentMountain===m.id?'active':''} ${unlocked?'':'locked'}" 
+      ${unlocked?`onclick="igSwitchMountain('${m.id}')"`:''} 
+      title="${unlocked?'切换到'+m.name:m.unlockDesc}">${m.name}</div>`;
+  }).join('');
+}
+
+function igSwitchMountain(id) {
+  const m = IG_MOUNTAINS.find(x=>x.id===id);
+  if (!m || !igMountainUnlocked(m)) return;
+  igCurrentMountain = id;
+  igRender();
+  igSave();
+}
+
+function igRender() {
+  // 山标签
+  igRenderMountainTabs();
+
+  const mCfg = IG_MOUNTAINS.find(x=>x.id===igCurrentMountain);
+  const mData = igMountainData();
+
+  document.getElementById('igSoil').textContent = igFmt(igState.soilBalance || 0);
+  document.getElementById('igCoins').textContent = igFmt(igState.coins || 0);
+  const cps = igCps();
+  document.getElementById('igCps').textContent = igFmt(cps) + '/秒';
+  document.getElementById('igClickPow').textContent = '+' + igClickDmg();
+  // 技能CD
+  const skillBtn = document.getElementById('igSkillBtn');
+  const skillCd = document.getElementById('igSkillCd');
+  if (skillBtn && skillCd) {
+    const remain = Math.max(0, Math.ceil((igSkillReadyAt - Date.now())/1000));
+    if (remain > 0) {
+      skillBtn.style.opacity = '0.5';
+      skillCd.textContent = remain + '秒';
+    } else {
+      skillBtn.style.opacity = '1';
+      skillCd.textContent = '就绪';
+    }
+  }
+
+  const pct = Math.min(100, mData.progress / mCfg.total * 100);
+  document.getElementById('igBar').style.width = pct+'%';
+  document.getElementById('igPct').textContent = pct.toFixed(1)+'%';
+
+  const stageIdx = Math.min(4, Math.floor(pct/25));
+  document.getElementById('igStage').textContent = mCfg.name + ' · ' + igStages[stageIdx];
+
+  // 分段奖励（每座山独立算）
+  const claimed = mData.claimed || {};
+  igRewards.forEach(r => {
+    if (pct >= r.pct && !claimed[r.id]) {
+      claimed[r.id] = true;
+      mData.claimed = claimed;
+      igState.coins = (igState.coins || 0) + r.coins;
+      showToast(`${mCfg.name} ${r.pct}%达成！奖励${r.coins}金币`);
+      igSave();
+    }
+    const el = document.getElementById(r.id);
+    if (el) el.classList.toggle('claimed', !!claimed[r.id]);
+  });
+
+  document.getElementById('igWin').classList.toggle('show', mData.progress >= mCfg.total);
+
+  document.getElementById('igGens').innerHTML = igGensCfg.map(g=>{
+    const n = igState.gens[g.id]||0;
+    const cost = igCost(g.base, n);
+    return `<div class="ig-shop-item">
+      <div class="ig-shop-icon">${g.icon}</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">${g.name}${n>0?' × '+n:''}</div>
+        <div class="ig-shop-desc">+${g.cps}/秒</div>
+      </div>
+      <button class="ig-shop-btn" ${(igState.soilBalance||0)>=cost?'':'disabled'} onclick="igBuyGen('${g.id}')">${igFmt(cost)}</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('igTools').innerHTML = igToolsCfg.map(t=>{
+    if (igState.tools[t.id]) {
+      return `<div class="ig-shop-item">
+        <div class="ig-shop-icon">${t.icon}</div>
+        <div class="ig-shop-info">
+          <div class="ig-shop-name">${t.name} <span style="color:var(--green)">已装备</span></div>
+        </div>
+      </div>`;
+    }
+    return `<div class="ig-shop-item">
+      <div class="ig-shop-icon">${t.icon}</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">${t.name}</div>
+        <div class="ig-shop-desc">点击 +${t.bonus}</div>
+      </div>
+      <button class="ig-shop-btn" ${(igState.soilBalance||0)>=t.cost?'':'disabled'} onclick="igBuyTool('${t.id}')">${igFmt(t.cost)}</button>
+    </div>`;
+  }).join('');
+
+  // 金币商店
+  const gu = igState.goldUp || {};
+  document.getElementById('igGoldShop').innerHTML = igGoldShop.map(item=>{
+    const owned = item.type === 'autoClick' ? (igState.autoClicker>0) : gu[item.id];
+    if (owned) {
+      return `<div class="ig-shop-item">
+        <div class="ig-shop-icon">${item.icon}</div>
+        <div class="ig-shop-info">
+          <div class="ig-shop-name">${item.name} <span style="color:#f1c40f">已拥有</span></div>
+          <div class="ig-shop-desc">${item.desc}</div>
+        </div>
+      </div>`;
+    }
+    return `<div class="ig-shop-item">
+      <div class="ig-shop-icon">${item.icon}</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">${item.name}</div>
+        <div class="ig-shop-desc">${item.desc}</div>
+      </div>
+      <button class="ig-shop-btn" style="background:#f1c40f;color:#333;" ${(igState.coins||0)>=item.cost?'':'disabled'} onclick="igBuyGold('${item.id}')">${item.cost} 金币</button>
+    </div>`;
+  }).join('');
+
+  // 成就列表
+  const ach = igState.achievements || {};
+  document.getElementById('igAchievements').innerHTML = IG_ACHIEVEMENTS.map(a=>{
+    const done = ach[a.id];
+    return `<div class="ig-shop-item" style="opacity:${done?1:.5};">
+      <div class="ig-shop-icon">${done?'🏆':'🔒'}</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">${a.name}</div>
+        <div class="ig-shop-desc">${a.desc} · 奖${a.reward}金币</div>
+      </div>
+      ${done?'<span style="color:var(--green);font-size:12px;">已达成</span>':''}
+    </div>`;
+  }).join('');
+
+  // 每日任务
+  const ds = igDailyState();
+  const elDaily = document.getElementById('igDaily');
+  if (elDaily) {
+    elDaily.innerHTML = IG_DAILY.map(q=>{
+      const prog = Math.min(q.target, q.check() ? q.target : (q.id==='dclick'?ds.clicks : q.id==='dsoil'?ds.soil : ds.gens));
+      const done = !!ds.done[q.id];
+      const canClaim = !done && q.check();
+      return `<div class="ig-shop-item" style="opacity:${done?0.6:1};">
+        <div class="ig-shop-icon">${done?'✅':q.icon}</div>
+        <div class="ig-shop-info">
+          <div class="ig-shop-name">${q.name}</div>
+          <div class="ig-shop-desc">${q.desc}（${Math.min(q.target, prog)}/${q.target}）· 奖${q.reward}金币</div>
+        </div>
+        ${done?'<span style="color:var(--green);font-size:12px;">已领取</span>'
+          :(canClaim?`<button class="ig-shop-btn" style="background:#2ecc71;color:#fff;" onclick="igClaimDaily('${q.id}')">领取</button>`
+          :'<span style="color:var(--text-secondary);font-size:11px;">进行中</span>')}
+      </div>`;
+    }).join('');
+  }
+
+  // Boss山
+  const elBoss = document.getElementById('igBoss');
+  if (elBoss) {
+    const bLv = igState.bossLevel || 0, bKills = igState.bossKills || 0, bBonus = igState.bossBonus || 0;
+    const now = Date.now();
+    let html = '';
+    if (igState.bossState === 'fighting') {
+      const remain = Math.max(0, Math.ceil((igState.bossUntil - now)/1000));
+      const hpPct = Math.max(0, Math.min(100, igState.bossHp / igState.bossMax * 100));
+      html = `<div class="ig-shop-item" style="border:1px solid #e74c3c;">
+        <div class="ig-shop-info" style="width:100%;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span>Boss山 Lv.${bLv+1}（击败可获得 ${bossReward()} 金币 + 永久+10%产出）</span>
+            <span style="color:#e74c3c;">⏱ ${remain}秒</span>
+          </div>
+          <div style="height:10px;background:#333;border-radius:5px;margin:8px 0;overflow:hidden;">
+            <div style="height:100%;width:${hpPct}%;background:linear-gradient(90deg,#e74c3c,#ff9800);"></div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);">Boss血条 ${igFmt(igState.bossHp)}/${igFmt(igState.bossMax)} · 用力点击+产出攻击它！</div>
+        </div>
+      </div>`;
+    } else {
+      const cd = igState.bossCooldown || 0;
+      const ready = now >= cd;
+      html = `<div class="ig-shop-item">
+        <div class="ig-shop-icon">👹</div>
+        <div class="ig-shop-info">
+          <div class="ig-shop-name">Boss山 Lv.${bLv+1}</div>
+          <div class="ig-shop-desc">击败得 ${bossReward()} 金币 · 永久产出+10% · 已击败${bKills}次 · 当前加成+${Math.round(bBonus*100)}%</div>
+        </div>
+        <button class="ig-shop-btn" style="background:#e74c3c;color:#fff;" ${ready?'':'disabled'} onclick="igSummonBoss()">${ready?'挑战':'冷却中'}</button>
+      </div>`;
+    }
+    elBoss.innerHTML = html;
+  }
+}
+
+function igBuyGold(id) {
+  const item = igGoldShop.find(x=>x.id===id);
+  if (!item) return;
+  if (!igState.goldUp) igState.goldUp = {};
+  if ((igState.coins||0) < item.cost) return;
+  igState.coins -= item.cost;
+  if (item.type === 'autoClick') {
+    igState.autoClicker = (igState.autoClicker||0) + item.value;
+    showToast(`购买成功：${item.name}（自动点击+${item.value}/秒）`);
+  } else {
+    igState.goldUp[id] = true;
+    showToast(`购买成功：${item.name}`);
+  }
+  igRender(); igSave();
+}
+
+// ===== 存档（纯本地 localStorage，按账号隔离） =====
+// 存档key跟账号绑定
+function igSaveKey() {
+  return 'ig_save_' + (currentUser ? (currentUser.lname || currentUser.name.toLowerCase()) : 'guest');
+}
+// 云端存档 upsert（按 user_name）
+async function cloudUpsertSave(userName, saveData) {
+  try {
+    const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(userName) + '&limit=1');
+    if (rows && rows[0]) await supabaseRest('PATCH', 'game_saves', 'user_name=eq.' + encodeURIComponent(userName), { save_data: saveData });
+    else await supabaseRest('POST', 'game_saves', '', { user_name: userName, save_data: saveData });
+  } catch(e) {}
+}
+function igSave() {
+  igState.lastTime = Date.now();
+  localStorage.setItem(igSaveKey(), JSON.stringify(igState));
+  if (currentUser) cloudUpsertSave(currentUser.name, igState);
+}
+async function igLoad() {
+  igState = {
+    soilBalance: 0, mountains: {}, clickPower: 1,
+    gens: {}, tools: {}, coins: 0, goldUp: {},
+    achievements: {}, autoClicker: 0, totalClicks: 0
+  };
+  // 读取本地存档（兜底）
+  try {
+    const s = JSON.parse(localStorage.getItem(igSaveKey()));
+    if (s) {
+      igState = Object.assign(igState, s);
+      if (!igState.mountains) igState.mountains = {};
+    }
+  } catch {}
+  // 从云端拉取最新存档（跨设备同步）
+  if (currentUser) {
+    try {
+      const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(currentUser.name) + '&limit=1');
+      if (rows && rows[0] && rows[0].save_data) {
+        igState = Object.assign(igState, rows[0].save_data);
+        if (!igState.mountains) igState.mountains = {};
+      }
+    } catch(e) {}
+  }
+  // 离线收益
+  if (igState.lastTime) {
+    const offSec = Math.min((Date.now() - igState.lastTime)/1000, 8*3600);
+    if (offSec > 60) {
+      const c = igCps();
+      const gain = c * offSec * 0.5;
+      if (gain > 10) {
+        igState.soilBalance += gain;
+        igMountainData().progress += gain;
+        setTimeout(()=>showToast('离线收益：挖了 ' + igFmt(gain) + ' 土方（离线效率50%）'), 500);
+      }
+    }
+  }
+  igCurrentMountain = igGetCurrentMountain();
+}
+// 游戏在后台也持续运行，切走标签页不停止
+// 计算每100ms走一次，但UI刷新节流到500ms，避免频繁重绘导致按钮点不到
+let igUiTick = 0, igEventCooldown = 30;
+setInterval(()=>{
+  const now = Date.now();
+  const buffMult = now < igBuff.until ? igBuff.mult : 1;
+  const c = igCps();
+  if (c > 0) {
+    igState.soilBalance += c/10 * buffMult;
+    igMountainData().progress += c/10 * buffMult;
+  }
+  // 自动点击器
+  if (igState.autoClicker > 0) {
+    igState.soilBalance += igClickDmg() * igState.autoClicker / 10;
+    igMountainData().progress += igClickDmg() * igState.autoClicker / 10;
+  }
+  // Boss山：产出每秒伤害Boss + 超时逃跑
+  if (igState.bossState === 'fighting') {
+    bossDamage((c/10 + igClickDmg() * (igState.autoClicker||0) / 10) * buffMult);
+    if (Date.now() > igState.bossUntil) {
+      igState.bossState = 'idle';
+      igState.bossCooldown = Date.now() + IG_BOSS.cooldownMs;
+      showToast('Boss山逃走了！冷却后再来挑战');
+    }
+  }
+  igUiTick++;
+  // 随机事件：每30秒可能触发一次
+  igEventCooldown -= 0.1;
+  if (igEventCooldown <= 0) {
+    igEventCooldown = 20 + Math.random()*40;
+    if (document.getElementById('gameView').classList.contains('show') && Math.random() < 0.5) {
+      const r = Math.random();
+      if (r < 0.35) { igBuff = { mult: 2, until: now + 20000 }; showToast('✨ 山神显灵！20秒内产出翻倍！'); }
+      else if (r < 0.6) { const gold = 50 + Math.floor(Math.random()*150); igState.coins = (igState.coins||0) + gold; showToast('🪙 金币雨！获得 +' + gold + ' 金币'); }
+      else if (r < 0.8) { const bonus = c * 15; igState.soilBalance += bonus; igMountainData().progress += bonus; showToast('🌋 山崩！瞬间获得 ' + igFmt(bonus) + ' 土方'); }
+      else { igBuff = { mult: 5, until: now + 10000 }; showToast('💥 暴击时刻！10秒内点击威力 x5'); }
+    }
+  }
+  if (igUiTick % 5 === 0 && document.getElementById('gameView').classList.contains('show')) {
+    igRender();
+    igCheckAchievements();
+  }
+}, 100);
+
+// ===== 游戏后台 =====
+function admSetSoil() {
+  const v = parseFloat(document.getElementById('admSoil').value);
+  if (isNaN(v)) return;
+  igState.soilBalance = v;
+  igRender(); igSave();
+  showToast('土方已设为 ' + v);
+}
+function admSetCoins() {
+  const v = parseFloat(document.getElementById('admCoins').value);
+  if (isNaN(v)) return;
+  igState.coins = v;
+  igRender(); igSave();
+  showToast('金币已设为 ' + v);
+}
+function admSetProgress() {
+  const v = parseFloat(document.getElementById('admProgress').value);
+  if (isNaN(v)) return;
+  igMountainData().progress = v;
+  igRender(); igSave();
+  showToast('当前山进度已设为 ' + v);
+}
+function admSetClick() {
+  const v = parseFloat(document.getElementById('admClick').value);
+  if (isNaN(v) || v < 1) return;
+  igState.clickPower = v;
+  igRender(); igSave();
+  showToast('点击威力已设为 ' + v);
+}
+function admUnlockAll() {
+  IG_MOUNTAINS.forEach(m => {
+    if (!igState.mountains[m.id]) igState.mountains[m.id] = { progress: 0, claimed: {} };
+    if (m.unlockAt) igState.mountains[m.unlockAt].progress = m.total;
+  });
+  igRender(); igSave();
+  showToast('所有山已解锁');
+}
+function admMaxProgress() {
+  const mCfg = IG_MOUNTAINS.find(x=>x.id===igCurrentMountain);
+  igMountainData().progress = mCfg.total;
+  igRender(); igSave();
+  showToast('当前山已挖满');
+}
+function admReset() {
+  if (!confirm('确定要清空所有游戏数据吗？此操作不可恢复！')) return;
+  localStorage.removeItem('ig_save');
+  igState = { soilBalance:0, mountains:{}, clickPower:1, gens:{}, tools:{}, coins:0, goldUp:{}, achievements:{}, autoClicker:0, totalClicks:0 };
+  igCurrentMountain = 'taihang';
+  igRender();
+  showToast('游戏存档已清空');
+}
+document.getElementById('adminPanel').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+// 管理员名单（不区分大小写）
+const ADMIN_USERS = ['asd1316947244'];
+
+// 在线心跳：登录状态下每20秒把"在线"状态上报云端
+async function cloudHeartbeat(userName) {
+  try {
+    const now = new Date().toISOString();
+    const rows = await supabaseRest('GET', 'online_users', 'user_name=eq.' + encodeURIComponent(userName) + '&limit=1');
+    if (rows && rows[0]) await supabaseRest('PATCH', 'online_users', 'user_name=eq.' + encodeURIComponent(userName), { last_seen: now });
+    else await supabaseRest('POST', 'online_users', '', { user_name: userName, last_seen: now });
+  } catch(e) {}
+}
+async function cloudOffline(userName) {
+  try { await supabaseRest('DELETE', 'online_users', 'user_name=eq.' + encodeURIComponent(userName)); } catch(e) {}
+}
+// 定时心跳（登录就上报；没登录跳过）
+setInterval(() => { if (currentUser) cloudHeartbeat(currentUser.name); }, 20000);
+
+async function admLoadUsers() {
+  let users = [];
+  try {
+    const rows = await supabaseRest('GET', 'users', 'select=name,lname&order=created_at.desc&limit=500');
+    users = (rows || []).map(u => ({ name: u.name, lname: u.lname }));
+  } catch(e) {}
+  if (!users.length) users = getUsers(); // 云端失败则回退本地
+  // 按lname去重，保留第一个
+  const seen = {};
+  const list = users.filter(u => {
+    const key = (u.lname || u.name || '').toLowerCase();
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+  document.getElementById('admUserCount').textContent = list.length;
+  // 在线数：云端 last_seen 在 60 秒内
+  try {
+    const cutoff = new Date(Date.now() - 60000).toISOString();
+    const onrows = await supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(cutoff) + '&select=user_name');
+    const online = new Set((onrows || []).map(r => r.user_name)).size;
+    document.getElementById('admOnlineCount').textContent = online;
+  } catch(e) { document.getElementById('admOnlineCount').textContent = '?'; }
+  document.getElementById('admUserList').innerHTML = list.map((u,i)=>
+    `<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span>${i+1}. ${u.name}</span>
+      <span style="color:${ADMIN_USERS.includes(u.lname)?'var(--accent-light)':'var(--text-secondary)'};font-size:11px;">${ADMIN_USERS.includes(u.lname)?'管理员':''}</span>
+    </div>`
+  ).join('') || '<div style="color:var(--text-secondary);">暂无注册用户</div>';
+}
+
+// 按 B 键呼出后台（需要管理员权限，无权限静默不响应）
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'b' || e.key === 'B') {
+    if (document.activeElement.tagName === 'INPUT') return;
+    if (!currentUser) return;
+    if (!ADMIN_USERS.includes(currentUser.lname || currentUser.name.toLowerCase())) return;
+    admLoadUsers();
+    document.getElementById('adminPanel').classList.add('show');
+  }
+});
+
+// 成就检查
+function igCheckAchievements() {
+  if (!igState.achievements) igState.achievements = {};
+  IG_ACHIEVEMENTS.forEach(a => {
+    if (!igState.achievements[a.id] && a.check()) {
+      igState.achievements[a.id] = true;
+      igState.coins = (igState.coins||0) + a.reward;
+      showToast(`🏆 成就达成「${a.name}」！+${a.reward}金币`);
+      igSave();
+    }
+  });
+}
+setInterval(igSave, 5000);
+igLoad();
+
+// ===== 搜索 =====
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.value.trim()) {
+    showToast(`搜索：${e.target.value}`);
+  }
+});
+
+// ===== Toast =====
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+</script>
+</body>
+</html>
