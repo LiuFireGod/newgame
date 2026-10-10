@@ -945,6 +945,14 @@
   </div>
 </div>
 
+<!-- ===== 玩家主页弹窗（排行榜点击名称进入） ===== -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal" style="max-width:420px;max-height:84vh;overflow-y:auto;">
+    <button class="close-modal" onclick="document.getElementById('profileModal').classList.remove('show')">&times;</button>
+    <div id="profileBody"><div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div></div>
+  </div>
+</div>
+
 <!-- ===== 发帖弹窗 ===== -->
 <div class="modal-overlay" id="postModal">
   <div class="modal" style="max-width:500px;">
@@ -2366,10 +2374,90 @@ function igRenderSect() {
         <div class="ig-shop-name">全村人口 ${pop} 口</div>
         <div class="ig-shop-desc">每10口全局产出+10% · ${popCap>0?'上限 '+popCap+' 口（随境界提升）':'人口无上限'}${pop>=10?' · 当前人口加成 +'+Math.floor(pop/10)*10+'%':''}</div>
       </div>
-      <button class="ig-shop-btn" style="background:#fd79a8;color:#fff;" ${(!popFull && (igState.coins||0)>=popCost)?'':'disabled'} onclick="igRecruitPop()">招徕 ${igFmt(popCost)}</button>
+      ${(()=>{
+        let reason = '';
+        if (popFull) reason = '人口已达上限，突破境界可容纳更多';
+        else if ((igState.coins||0) < popCost) reason = '金币不足（需 ' + igFmt(popCost) + '，当前 ' + igFmt(igState.coins||0) + '）';
+        return `<button class="ig-shop-btn" style="background:#fd79a8;color:#fff;" ${reason?'disabled':''} onclick="igRecruitPop()">招徕 ${igFmt(popCost)}</button>
+        ${reason?`<div style="font-size:11px;color:#e17055;margin-top:6px;">⚠️ ${reason}</div>`:''}`;
+      })()}
     </div>
     ${sectHtml}`;
 }
+
+// ===== 玩家主页（排行榜点击名称打开） =====
+async function openPlayerProfile(acct) {
+  const el = document.getElementById('profileModal');
+  if (!el) return;
+  el.classList.add('show');
+  const body = document.getElementById('profileBody');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
+  // 云端资料（users 表）
+  let info = { name: acct, bio: '', avatar_color: '#6c5ce7', avatar_img: '' };
+  try {
+    const us = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(acct) + '&limit=1');
+    if (us && us[0]) { info = Object.assign(info, us[0]); if (!info.name) info.name = acct; }
+  } catch(e) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>';
+    return;
+  }
+  // 云端战绩（game_saves）
+  let stats = { soil: 0, coins: 0, boss: 0, progress: 0, realm: 0, realmName: '炼气' };
+  try {
+    const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(acct) + '&limit=1');
+    if (rows && rows[0]) {
+      let sd = rows[0].save_data;
+      if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
+      sd = sd || {};
+      let progress = 0;
+      const mts = sd.mountains || {};
+      IG_MOUNTAINS.forEach(m => { const md = mts[m.id]; if (md && md.progress >= m.total) progress++; });
+      stats = {
+        soil: Math.floor(sd.soilBalance || 0),
+        coins: Math.floor(sd.coins || 0),
+        boss: Math.floor(sd.bossKills || 0),
+        progress: progress,
+        realm: sd.realm || 0,
+        realmName: (IG_REALMS[sd.realm] && IG_REALMS[sd.realm].name) || '炼气'
+      };
+    }
+  } catch(e) {}
+  const isMe = currentUser && (currentUser.lname || currentUser.name.toLowerCase()) === acct;
+  body.innerHTML = `
+    <div style="text-align:center;">
+      <div style="width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:${info.avatar_color || '#6c5ce7'};overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;">
+        ${info.avatar_img ? `<img src="${rankEsc(info.avatar_img)}" style="width:100%;height:100%;object-fit:cover;">` : rankEsc((info.name || acct).slice(0,1).toUpperCase())}
+      </div>
+      <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${rankEsc(info.name || acct)}</div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${info.bio ? rankEsc(info.bio) : '这个人很懒，什么都没写~'}</div>
+      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:12px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openProfile()">✏️ 编辑我的资料</button>' : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--text-secondary);">已挖土方</div>
+        <div style="font-size:15px;font-weight:700;color:var(--accent-light);margin-top:4px;">${igFmt(stats.soil)}</div>
+      </div>
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--text-secondary);">金币</div>
+        <div style="font-size:15px;font-weight:700;color:#f1c40f;margin-top:4px;">${igFmt(stats.coins)}</div>
+      </div>
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--text-secondary);">挖完山数</div>
+        <div style="font-size:15px;font-weight:700;color:#a29bfe;margin-top:4px;">${stats.progress} 座</div>
+      </div>
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--text-secondary);">Boss击杀</div>
+        <div style="font-size:15px;font-weight:700;color:#e17055;margin-top:4px;">${stats.boss} 次</div>
+      </div>
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--text-secondary);">境界</div>
+        <div style="font-size:15px;font-weight:700;color:#74b9ff;margin-top:4px;">${rankEsc(stats.realmName)}</div>
+      </div>
+    </div>`;
+}
+document.getElementById('profileModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
 
 // ===== 活动页（公告 + 拉人游玩送钻石） =====
 function igMyInviteCode() {
@@ -2428,7 +2516,7 @@ async function renderEvents() {
     '<div style="font-size:14px;font-weight:700;color:var(--text-primary);">💎 邀请好友，每拉 1 人得 ' + IG_INVITE_REWARD + ' 钻石</div>' +
     '<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.6;">把专属链接发给好友，好友通过链接打开并登录游玩，你就获得奖励！钻石可用于后续商店兑换。</div>' +
     '<div style="margin-top:10px;">' +
-    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">我的邀请链接（账号：' + (u ? u.name : '未登录') + '）</div>' +
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">我的邀请链接（账号：' + (u ? (u.lname || u.name) : '未登录') + '）</div>' +
     '<div style="display:flex;gap:6px;align-items:center;">' +
     '<input id="inviteLink" readonly value="' + link + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:12px;padding:8px;">' +
     '<button class="ig-shop-btn" style="background:#f0932b;white-space:nowrap;" onclick="copyInviteLink()">复制链接</button>' +
@@ -2520,6 +2608,7 @@ async function rankLoad() {
     if (!prev || rec.soil > prev.soil) byUser[uname] = rec;
   });
   rankData = Object.values(byUser).map(rec => ({
+    acct: rec.acct,
     name: nameMap[rec.acct] || rec.acct, // 显示名（未改名则显示账号兜底）
     soil: rec.soil, coins: rec.coins, progress: rec.progress, boss: rec.boss,
     me: meName && rec.acct === meName
@@ -2551,7 +2640,7 @@ function rankRender(t) {
     const isMe = x.me;
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);${isMe ? 'background:rgba(108,92,231,.15);border-radius:10px;' : ''}">
       <span style="width:36px;text-align:center;font-weight:800;color:${i < 3 ? '#f1c40f' : 'var(--text-secondary)'};">${medal[i] || (i + 1)}</span>
-      <span style="flex:1;font-weight:${isMe ? '700' : '400'};color:${isMe ? 'var(--accent-light)' : 'var(--text-primary)'};word-break:break-all;">${rankEsc(x.name)}${isMe ? '（我）' : ''}</span>
+      <span style="flex:1;font-weight:${isMe ? '700' : '400'};color:${isMe ? 'var(--accent-light)' : 'var(--text-primary)'};word-break:break-all;cursor:pointer;" onclick="openPlayerProfile('${rankEsc(x.acct)}')" title="点击查看主页">${rankEsc(x.name)}${isMe ? '（我）' : ''}</span>
       <span style="color:var(--text-secondary);font-size:12px;">${label}</span>
       <span style="font-weight:700;color:var(--accent-light);white-space:nowrap;">${igFmt(x[key])}</span>
     </div>`;
