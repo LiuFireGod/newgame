@@ -1284,7 +1284,7 @@ function pfRemoveImage() {
   currentUser.avatar_img = null;
   pfRenderAvatar();
 }
-function pfSave() {
+async function pfSave() {
   if (!currentUser) return;
   const name = document.getElementById('pfNameInput').value.trim();
   if (!name) { showToast('名称不能为空'); return; }
@@ -1305,16 +1305,17 @@ function pfSave() {
   }
   setCurrentUser(currentUser);
   updateNavUser();
-  cloudUpdateProfile(currentUser); // 云端尽力同步（失败不影响本地）
+  const synced = await cloudUpdateProfile(currentUser); // 个人中心数据上传云端
   document.getElementById('profileModal').classList.remove('show');
-  showToast('个人资料已保存');
+  showToast(synced ? '✅ 个人资料已保存并同步云端' : '个人资料已保存（云端同步失败，部署后可同步）');
 }
 async function cloudUpdateProfile(u) {
   try {
     await supabaseRest('PATCH', 'users', 'lname=eq.' + encodeURIComponent(u.lname), {
       name: u.name, avatar_color: u.avatarColor || u.avatar_color, bio: u.bio, avatar_img: u.avatar_img || null
     });
-  } catch(e) { /* 云端不同步时本地资料仍生效 */ }
+    return true; // 云端同步成功
+  } catch(e) { return false; } // 云端不同步时本地资料仍生效
 }
 
 // 点击弹窗外部关闭
@@ -1984,7 +1985,7 @@ function igDoDig() {
   ds.soil += dmg;
   // 挖到宝藏（小概率）
   if (Math.random() < 0.0025) {
-    const gold = 10 + Math.floor(Math.random() * 40);
+    const gold = 30 + Math.floor(Math.random() * 90);
     igState.coins = (igState.coins || 0) + gold;
     igState.treasures = (igState.treasures || 0) + 1;
     showToast('💎 挖到宝藏！+' + gold + ' 金币');
@@ -2035,8 +2036,8 @@ function igBreakRealm() {
 // ===== 人口：招徕村民 =====
 function igPopCap() { return IG_REALMS[igRealm()].popCap; }
 function igPopCost() {
-  // 成本随人口平缓增长（底数1.15）：人口107口时约2.7亿金币，随产出增长可逐步负担
-  return Math.floor(100 * Math.pow(1.15, (igState.population || 1) - 1));
+  // 成本随人口平缓增长（底数1.1，大幅下调）：匹配金币获取难度，31口约0.9k、50口约3.1k
+  return Math.floor(50 * Math.pow(1.1, (igState.population || 1) - 1));
 }
 function igRecruitPop() {
   const cost = igPopCost();
@@ -2390,6 +2391,9 @@ async function openPlayerProfile(acct) {
   const el = document.getElementById('profileModal');
   if (!el) return;
   el.classList.add('show');
+  // 先关闭排行榜弹窗
+  const rk = document.getElementById('rankModal');
+  if (rk) rk.classList.remove('show');
   const body = document.getElementById('profileBody');
   body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
   // 云端资料（users 表）
@@ -2401,6 +2405,16 @@ async function openPlayerProfile(acct) {
     body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>';
     return;
   }
+  // 本地资料补充（改名后云端未同步时显示最新名称/简介/头像）
+  try {
+    const lu = getUsers().find(x => x.lname === acct);
+    if (lu) {
+      if (lu.name) info.name = lu.name;
+      if (lu.bio) info.bio = lu.bio;
+      if (lu.avatar_color) info.avatar_color = lu.avatar_color;
+      if (lu.avatar_img) info.avatar_img = lu.avatar_img;
+    }
+  } catch(e) {}
   // 云端战绩（game_saves）
   let stats = { soil: 0, coins: 0, boss: 0, progress: 0, realm: 0, realmName: '炼气' };
   try {
@@ -2566,6 +2580,9 @@ function openRank() {
   document.getElementById('rankModal').classList.add('show');
   rankLoad();
 }
+function rankClose() {
+  document.getElementById('rankModal').classList.remove('show');
+}
 async function rankLoad() {
   const body = document.getElementById('rankBody');
   body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
@@ -2577,6 +2594,10 @@ async function rankLoad() {
   users = users || [];
   const nameMap = {}, accts = new Set();
   users.forEach(u => { if (u && u.lname) { accts.add(u.lname); if (u.name) nameMap[u.lname] = u.name; } });
+  // 本地已改名的上榜玩家补充显示名（云端 PATCH 未同步时名称仍显示最新，不引入新账号）
+  try {
+    getUsers().forEach(u => { if (u && u.lname && u.name && accts.has(u.lname)) nameMap[u.lname] = u.name; });
+  } catch(e) {}
   // 2) 云端存档
   let rows = [];
   try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); }
@@ -2640,7 +2661,7 @@ function rankRender(t) {
     const isMe = x.me;
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);${isMe ? 'background:rgba(108,92,231,.15);border-radius:10px;' : ''}">
       <span style="width:36px;text-align:center;font-weight:800;color:${i < 3 ? '#f1c40f' : 'var(--text-secondary)'};">${medal[i] || (i + 1)}</span>
-      <span style="flex:1;font-weight:${isMe ? '700' : '400'};color:${isMe ? 'var(--accent-light)' : 'var(--text-primary)'};word-break:break-all;cursor:pointer;" onclick="openPlayerProfile('${rankEsc(x.acct)}')" title="点击查看主页">${rankEsc(x.name)}${isMe ? '（我）' : ''}</span>
+      <span style="flex:1;font-weight:${isMe ? '700' : '400'};color:${isMe ? 'var(--accent-light)' : 'var(--text-primary)'};word-break:break-all;cursor:pointer;" onclick="rankClose(); openPlayerProfile('${rankEsc(x.acct)}')" title="点击查看主页">${rankEsc(x.name)}${isMe ? '（我）' : ''}</span>
       <span style="color:var(--text-secondary);font-size:12px;">${label}</span>
       <span style="font-weight:700;color:var(--accent-light);white-space:nowrap;">${igFmt(x[key])}</span>
     </div>`;
@@ -2661,7 +2682,7 @@ async function cloudUpsertSave(userName, saveData) {
 function igSave() {
   igState.lastTime = Date.now();
   localStorage.setItem(igSaveKey(), JSON.stringify(igState));
-  if (currentUser) cloudUpsertSave(currentUser.name, igState);
+  if (currentUser) cloudUpsertSave(currentUser.lname || currentUser.name, igState); // 存档统一按账号(lname)存储，与改名无关
 }
 async function igLoad() {
   igState = {
@@ -2684,7 +2705,7 @@ async function igLoad() {
   // 从云端拉取最新存档（跨设备同步）
   if (currentUser) {
     try {
-      const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(currentUser.name) + '&limit=1');
+      const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(currentUser.lname || currentUser.name) + '&limit=1');
       if (rows && rows[0] && rows[0].save_data) {
         igState = Object.assign(igState, rows[0].save_data);
         if (!igState.mountains) igState.mountains = {};
@@ -2757,7 +2778,7 @@ setInterval(()=>{
     if (document.getElementById('gameView').classList.contains('show') && Math.random() < 0.5) {
       const r = Math.random();
       if (r < 0.3) { igBuff = { mult: 2, until: now + 20000 }; showToast('✨ 山神显灵！20秒内产出翻倍！'); }
-      else if (r < 0.5) { const gold = 50 + Math.floor(Math.random()*150); igState.coins = (igState.coins||0) + gold; showToast('🪙 金币雨！获得 +' + gold + ' 金币'); }
+      else if (r < 0.5) { const gold = 100 + Math.floor(Math.random()*200); igState.coins = (igState.coins||0) + gold; showToast('🪙 金币雨！获得 +' + gold + ' 金币'); }
       else if (r < 0.68) { const bonus = c * 15; igState.soilBalance += bonus; igMountainData().progress += bonus; showToast('🌋 山崩！瞬间获得 ' + igFmt(bonus) + ' 土方'); }
       else if (r < 0.82) { igBuff = { mult: 5, until: now + 10000 }; showToast('💥 暴击时刻！10秒内点击威力 x5'); }
       else if (r < 0.92) { const add = 2 + Math.floor(Math.random()*4); igState.population = (igState.population||1) + add; showToast('🚶 流浪者来投！全村人口 +' + add + ' 口'); }
