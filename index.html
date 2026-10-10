@@ -1809,6 +1809,25 @@ function igMountainUnlocked(m) {
   const prevCfg = IG_MOUNTAINS.find(x=>x.id===m.unlockAt);
   return prev && prev.progress >= prevCfg.total;
 }
+// 当前山挖满后自动切换到下一座未挖完且已解锁的山
+function igAutoAdvance() {
+  const mCfg = IG_MOUNTAINS.find(x=>x.id===igCurrentMountain);
+  if (!mCfg) return;
+  const d = igState.mountains[igCurrentMountain];
+  if (!d || d.progress < mCfg.total) return;
+  const next = IG_MOUNTAINS.find(m => {
+    if (m.id === igCurrentMountain) return false;
+    const md = igState.mountains[m.id];
+    if (md && md.progress >= m.total) return false;
+    return igMountainUnlocked(m);
+  });
+  if (!next) return; // 全部挖完，停在最后一座
+  igCurrentMountain = next.id;
+  if (!igState.mountains[next.id]) igState.mountains[next.id] = { progress: 0, claimed: {} };
+  showToast('⛰️ ' + mCfg.name + ' 挖平！自动开始挖 ' + next.name);
+  igRender();
+  igSave();
+}
 
 // 金币商店配置
 const igGoldShop = [
@@ -1947,6 +1966,7 @@ function igDoDig() {
   const dmg = igClickDmg() * buffMult;
   igState.soilBalance += dmg;
   igMountainData().progress += dmg;
+  igAutoAdvance(); // 挖满自动切下一座
   igState.totalClicks = (igState.totalClicks || 0) + 1;
   igState.cultivation = (igState.cultivation || 0) + dmg * 0.05; // 挖山悟道：点击修为+5%
   bossDamage(dmg); // 点击同时攻击Boss山
@@ -2628,6 +2648,8 @@ setInterval(()=>{
     igState.soilBalance += igClickDmg() * igState.autoClicker / 10;
     igMountainData().progress += igClickDmg() * igState.autoClicker / 10;
   }
+  // 当前山挖满自动切下一座
+  igAutoAdvance();
   // Boss山：产出每秒伤害Boss + 超时逃跑
   if (igState.bossState === 'fighting') {
     bossDamage((c/10 + igClickDmg() * (igState.autoClicker||0) / 10) * buffMult);
