@@ -698,15 +698,13 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <button class="ig-shop-btn" style="background:#a29bfe;color:#333;" onclick="igOpenMountainPicker()">⛰️ <span id="igCurMountain">太行山</span></button>
       <div style="display:flex;gap:8px;">
+        <button class="ig-shop-btn" style="background:#f0932b;" onclick="openEvents()">🎉 活动</button>
         <button class="ig-shop-btn" style="background:#00b894;" onclick="openRank()">🏆 排行榜</button>
         <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="openAdminPanel()">后台</button>
       </div>
     </div>
-    <!-- 公告 + 限时活动 -->
-    <div class="ig-notice" id="igNotice"></div>
-    <div class="ig-notice" id="igActivity"></div>
     <div class="ig-win" id="igWin">这座山已挖平！</div>
-    <div class="ig-stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));">
+    <div class="ig-stats" style="grid-template-columns:1fr 1fr;">
       <div class="ig-stat">
         <div class="ig-stat-label">已挖土方</div>
         <div class="ig-stat-value" id="igSoil">0</div>
@@ -718,6 +716,10 @@
       <div class="ig-stat">
         <div class="ig-stat-label">每秒产出</div>
         <div class="ig-stat-value" id="igCps" style="color:var(--green);font-size:20px;">0/秒</div>
+      </div>
+      <div class="ig-stat">
+        <div class="ig-stat-label">灵石</div>
+        <div class="ig-stat-value" id="igStonesStat" style="color:#74b9ff;font-size:18px;">0</div>
       </div>
       <div class="ig-stat">
         <div class="ig-stat-label">境界</div>
@@ -930,6 +932,16 @@
       <span style="font-size:12px;color:var(--text-secondary);">仅统计云端已同步存档的玩家</span>
       <button class="ig-shop-btn" style="background:#6c5ce7;" onclick="rankLoad()">刷新</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== 活动弹窗（公告 + 拉人送钻石） ===== -->
+<div class="modal-overlay" id="eventsModal">
+  <div class="modal" style="max-width:540px;max-height:84vh;overflow-y:auto;">
+    <button class="close-modal" onclick="closeEvents()">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">🎉 活动中心</h2>
+    <div class="sub" style="text-align:left;margin-bottom:14px;">公告与福利活动</div>
+    <div id="eventsBody"><div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div></div>
   </div>
 </div>
 
@@ -1688,13 +1700,8 @@ const IG_NOTICES = [
   { date: '2026-10-10', title: '13座大山 × 12位神话Boss', content: '新增不灭仙山与十二位神话Boss，挑战更刺激。' },
   { date: '2026-10-10', title: '全新排行榜', content: '挖山 / 金币 / 进度 / Boss 四大榜单，全服玩家同台竞技。' },
 ];
-// ===== 限时活动（每日固定时段生效） =====
-const IG_ACTIVITIES = [
-  { id: 'dawn', name: '黎明破晓', icon: '🌅', desc: '全体产出 +50%', startH: 6, endH: 9, mult: 1.5 },
-  { id: 'noon', name: '正午烈阳', icon: '☀️', desc: '点击威力 x2', startH: 12, endH: 14, click: 2 },
-  { id: 'dusk', name: '黄昏祈福', icon: '🌆', desc: '全体产出 +30%', startH: 17, endH: 19, mult: 1.3 },
-  { id: 'night', name: '月下悟道', icon: '🌙', desc: '修为获取 x2', startH: 20, endH: 22, cult: 2 },
-];
+// ===== 拉人游玩活动：每邀请1位新玩家游玩并登录，奖励50钻石 =====
+const IG_INVITE_REWARD = 50;
 const IG_MOUNTAINS = [
   { id: 'taihang', name: '太行山', total: 100000, unlockDesc: '初始开放' },
   { id: 'wangwu', name: '王屋山', total: 500000, unlockAt: 'taihang', unlockDesc: '挖完太行山解锁' },
@@ -1859,8 +1866,6 @@ function igCps() {
   IG_SECT_SHOP.forEach(it => {
     if (tc[it.id] && it.type === 'mult') c *= Math.pow(it.value, tc[it.id]); // 功法叠加
   });
-  const act = igActiveActivity(); // 限时活动加成
-  if (act && act.mult) c *= act.mult;
   return c;
 }
 function igClickDmg() {
@@ -1869,14 +1874,15 @@ function igClickDmg() {
   igGoldShop.forEach(item => {
     if (gu[item.id] && item.type === 'clickMult') dmg *= item.value;
   });
-  const act = igActiveActivity(); // 限时活动加成（正午烈阳：点击x2）
-  if (act && act.click) dmg *= act.click;
   return dmg;
 }
 function igFmt(n) {
   if (n < 1000) return Math.floor(n).toString();
   if (n < 1000000) return (n/1000).toFixed(1)+'k';
-  return (n/1000000).toFixed(2)+'M';
+  if (n < 1000000000) return (n/1000000).toFixed(2)+'M';
+  if (n < 1000000000000) return (n/1000000000).toFixed(2)+'B';
+  if (n < 1000000000000000) return (n/1000000000000).toFixed(2)+'T';
+  return (n/1000000000000000).toFixed(2)+'Qa';
 }
 
 let igBuff = { mult: 1, until: 0 }; // 临时buff
@@ -1942,8 +1948,7 @@ function igDoDig() {
   igState.soilBalance += dmg;
   igMountainData().progress += dmg;
   igState.totalClicks = (igState.totalClicks || 0) + 1;
-  const act = igActiveActivity();
-  igState.cultivation = (igState.cultivation || 0) + dmg * 0.05 * (act && act.cult ? act.cult : 1); // 挖山悟道：点击修为+5%（月下悟道x2）
+  igState.cultivation = (igState.cultivation || 0) + dmg * 0.05; // 挖山悟道：点击修为+5%
   bossDamage(dmg); // 点击同时攻击Boss山
   // 每日任务计数
   const ds = igDailyState();
@@ -2001,7 +2006,10 @@ function igBreakRealm() {
 }
 // ===== 人口：招徕村民 =====
 function igPopCap() { return IG_REALMS[igRealm()].popCap; }
-function igPopCost() { return Math.floor(150 * Math.pow(1.5, (igState.population || 1) - 1)); }
+function igPopCost() {
+  // 成本随人口平缓增长（底数1.15）：人口107口时约2.7亿金币，随产出增长可逐步负担
+  return Math.floor(100 * Math.pow(1.15, (igState.population || 1) - 1));
+}
 function igRecruitPop() {
   const cost = igPopCost();
   if ((igState.coins||0) < cost) { showToast('金币不足，招徕村民需要 ' + igFmt(cost) + ' 金币'); return; }
@@ -2110,9 +2118,8 @@ function igRender() {
   document.getElementById('igRealmName').textContent = IG_REALMS[realm].name;
   document.getElementById('igStones').textContent = igFmt(igState.spiritStones || 0);
   document.getElementById('igPopStat').textContent = (igState.population || 1) + '口';
+  document.getElementById('igStonesStat').textContent = igFmt(igState.spiritStones || 0);
   igRenderSect();
-  igRenderNotice();
-  igRenderActivity();
   // 技能CD
   const skillBtn = document.getElementById('igSkillBtn');
   const skillCd = document.getElementById('igSkillCd');
@@ -2344,41 +2351,80 @@ function igRenderSect() {
     ${sectHtml}`;
 }
 
-// ===== 公告 + 限时活动渲染 =====
-function igActiveActivity() {
-  const h = new Date().getHours();
-  return IG_ACTIVITIES.find(a => {
-    if (a.startH <= a.endH) return h >= a.startH && h < a.endH;
-    return h >= a.startH || h < a.endH; // 跨午夜
-  });
+// ===== 活动页（公告 + 拉人游玩送钻石） =====
+function igMyInviteCode() {
+  const u = currentUser;
+  if (!u) return '';
+  return (u.lname || u.name || '').toLowerCase();
 }
-function igRenderNotice() {
-  const el = document.getElementById('igNotice');
+function openEvents() {
+  const el = document.getElementById('eventsModal');
   if (!el) return;
-  el.innerHTML = '<div style="font-size:12px;font-weight:700;color:#f1c40f;margin-bottom:4px;">📢 游戏公告</div>' +
-    IG_NOTICES.map(n => `<div style="display:flex;gap:8px;padding:3px 0;">
-      <span style="color:#a29bfe;white-space:nowrap;">${n.date}</span>
-      <span><b>${n.title}</b>：${n.content}</span>
-    </div>`).join('');
+  el.classList.add('show');
+  renderEvents();
 }
-function igRenderActivity() {
-  const el = document.getElementById('igActivity');
-  if (!el) return;
-  const h = new Date().getHours();
-  const act = igActiveActivity();
-  el.innerHTML = '<div style="font-size:12px;font-weight:700;color:#00b894;margin-bottom:4px;">🎉 限时活动</div>' +
-    IG_ACTIVITIES.map(a => {
-      const active = act && act.id === a.id;
-      let status;
-      if (active) status = '<span style="color:var(--green);font-weight:700;">进行中</span>';
-      else {
-        const until = ((a.startH - h + 24) % 24) || 24;
-        status = '<span style="color:var(--text-secondary);">' + until + ' 小时后开启</span>';
+function closeEvents() { document.getElementById('eventsModal').classList.remove('show'); }
+async function renderEvents() {
+  const wrap = document.getElementById('eventsBody');
+  if (!wrap) return;
+  const u = currentUser;
+  const invite = igMyInviteCode();
+  // 钻石：本地 igState.diamonds（拉人奖励，由受邀玩家游玩后云端结算）
+  const diamonds = (igState && igState.diamonds) || 0;
+  let invitedCount = 0, giftBox = '';
+  if (u && invite) {
+    try {
+      // 从云端统计被本账号邀请的新玩家（save_data.invited_by === 我的账号）
+      const rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000');
+      const mine = (rows || []).filter(r => {
+        let sd = r.save_data;
+        if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
+        return sd && sd.invited_by === invite && r.user_name !== invite;
+      });
+      invitedCount = mine.length;
+      if (invitedCount > 0) {
+        const claimed = (igState && igState.diamonds_claimed) || 0;
+        const earned = invitedCount * IG_INVITE_REWARD;
+        if (earned > claimed) {
+          igState.diamonds = earned;
+          igState.diamonds_claimed = earned;
+          igSave();
+          giftBox = `<div style="background:rgba(0,184,148,.12);border:1px solid #00b894;border-radius:10px;padding:10px;margin-top:10px;font-size:13px;color:var(--green);">🎁 奖励到账！${earned - claimed} 钻石已发放（每人 ${IG_INVITE_REWARD} 钻石）</div>`;
+        }
       }
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">
-        <span>${a.icon} <b>${a.name}</b> ${a.desc}（${a.startH}:00-${a.endH}:00）</span>${status}
-      </div>`;
-    }).join('');
+    } catch(e) {}
+  }
+  const link = 'https://liufiregod.github.io/newgame/?invite=' + invite;
+  wrap.innerHTML =
+    '<div style="font-size:12px;font-weight:700;color:#f1c40f;margin-bottom:8px;">📢 游戏公告</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">' +
+    IG_NOTICES.map(n => `<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);">📌 ${n.title}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${n.date}</div>
+      <div style="font-size:12px;color:var(--text-primary);margin-top:4px;line-height:1.5;">${n.content}</div>
+    </div>`).join('') + '</div>' +
+    '<div style="font-size:12px;font-weight:700;color:#f0932b;margin-bottom:8px;">🤝 拉人游玩送钻石</div>' +
+    '<div style="background:linear-gradient(135deg,rgba(240,147,43,.15),rgba(0,184,148,.15));border:1px solid #f0932b;border-radius:12px;padding:14px;">' +
+    '<div style="font-size:14px;font-weight:700;color:var(--text-primary);">💎 邀请好友，每拉 1 人得 ' + IG_INVITE_REWARD + ' 钻石</div>' +
+    '<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.6;">把专属链接发给好友，好友通过链接打开并登录游玩，你就获得奖励！钻石可用于后续商店兑换。</div>' +
+    '<div style="margin-top:10px;">' +
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">我的邀请链接（账号：' + (u ? u.name : '未登录') + '）</div>' +
+    '<div style="display:flex;gap:6px;align-items:center;">' +
+    '<input id="inviteLink" readonly value="' + link + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:12px;padding:8px;">' +
+    '<button class="ig-shop-btn" style="background:#f0932b;white-space:nowrap;" onclick="copyInviteLink()">复制链接</button>' +
+    '</div></div>' +
+    '<div style="display:flex;gap:12px;margin-top:14px;font-size:13px;">' +
+    '<span>💎 我的钻石：<b style="color:#f1c40f;">' + igFmt(diamonds) + '</b></span>' +
+    '<span>👥 已邀请：<b style="color:#00b894;">' + invitedCount + '</b> 人</span>' +
+    '</div>' + giftBox +
+    '</div>';
+}
+function copyInviteLink() {
+  const inp = document.getElementById('inviteLink');
+  if (!inp) return;
+  inp.select();
+  try { document.execCommand('copy'); showToast('✅ 邀请链接已复制'); }
+  catch(e) { showToast('请手动复制链接'); }
 }
 
 function igBuyGold(id) {
@@ -2415,39 +2461,53 @@ function openRank() {
 async function rankLoad() {
   const body = document.getElementById('rankBody');
   body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
-  // 云端全服存档
+  const meName = currentUser ? (currentUser.lname || currentUser.name.toLowerCase()) : null; // 按账号匹配"我"
+  // 1) 注册玩家（users 表）：仅注册账号上榜，未注册/本地测试账号一律不显示
+  let users = [];
+  try { users = await supabaseRest('GET', 'users', 'select=lname,name&limit=1000'); }
+  catch(e) { body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>'; return; }
+  users = users || [];
+  const nameMap = {}, accts = new Set();
+  users.forEach(u => { if (u && u.lname) { accts.add(u.lname); if (u.name) nameMap[u.lname] = u.name; } });
+  // 2) 云端存档
   let rows = [];
-  try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); } catch(e) {}
-  // 云端为空则回退本地所有账号存档
-  if (!rows || !rows.length) {
-    rows = [];
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.indexOf('ig_save_') === 0) {
-          const s = JSON.parse(localStorage.getItem(k));
-          if (s) rows.push({ user_name: k.slice(9), save_data: s });
-        }
-      }
-    } catch(e) {}
+  try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); }
+  catch(e) { body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>'; return; }
+  rows = rows || [];
+  if (!rows.length || !accts.size) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">暂无上榜玩家</div>';
+    return;
   }
-  const meName = currentUser ? currentUser.name : null;
-  rankData = (rows || []).map(r => {
+  // 只保留注册账号 + 按账号去重：同一账号只保留一条（取土方最大的完整存档）
+  const byUser = {};
+  (rows || []).forEach(r => {
+    const uname = r.user_name;
+    if (!uname || !accts.has(uname)) return; // 未注册账号不上榜
     let sd = r.save_data;
     if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
     sd = sd || {};
     let progress = 0;
     const mts = sd.mountains || {};
     IG_MOUNTAINS.forEach(m => { const md = mts[m.id]; if (md && md.progress >= m.total) progress++; });
-    return {
-      name: r.user_name || '未知',
+    const rec = {
+      acct: uname,
       soil: Math.floor(sd.soilBalance || 0),
       coins: Math.floor(sd.coins || 0),
       progress: progress,
-      boss: Math.floor(sd.bossKills || 0),
-      me: meName && r.user_name === meName
+      boss: Math.floor(sd.bossKills || 0)
     };
-  }).filter(x => x.soil > 0 || x.coins > 0 || x.progress > 0 || x.boss > 0);
+    const prev = byUser[uname];
+    if (!prev || rec.soil > prev.soil) byUser[uname] = rec;
+  });
+  rankData = Object.values(byUser).map(rec => ({
+    name: nameMap[rec.acct] || rec.acct, // 显示名（未改名则显示账号兜底）
+    soil: rec.soil, coins: rec.coins, progress: rec.progress, boss: rec.boss,
+    me: meName && rec.acct === meName
+  })).filter(x => x.soil > 0 || x.coins > 0 || x.progress > 0 || x.boss > 0);
+  if (!rankData.length) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">暂无上榜玩家</div>';
+    return;
+  }
   rankRender(curRankTab);
 }
 function rankSwitch(t) {
@@ -2500,6 +2560,7 @@ async function igLoad() {
     gens: {}, tools: {}, coins: 0, goldUp: {},
     achievements: {}, autoClicker: 0, totalClicks: 0,
     realm: 0, cultivation: 0, spiritStones: 0, techniques: {}, population: 1,
+    diamonds: 0, diamonds_claimed: 0, invited_by: '',
     bossLevel: 0, bossKills: 0, bossBonus: 0,
     bossState: 'idle', bossHp: 0, bossMax: 0, bossUntil: 0, bossCooldown: 0
   };
@@ -2520,6 +2581,18 @@ async function igLoad() {
         if (!igState.mountains) igState.mountains = {};
       }
     } catch(e) {}
+  }
+  // 邀请链接检测：首次通过 ?invite=xxx 打开时记录邀请人（用于拉人送钻石）
+  try {
+    const p = new URLSearchParams(location.search);
+    const invFrom = (p.get('invite') || '').toLowerCase();
+    if (invFrom && !localStorage.getItem('ig_invite_from')) localStorage.setItem('ig_invite_from', invFrom);
+  } catch(e) {}
+  // 被邀请人：把邀请关系写入存档（首次），随存档同步到云端
+  const invitedFrom = localStorage.getItem('ig_invite_from');
+  if (invitedFrom && !igState.invited_by && currentUser) {
+    igState.invited_by = invitedFrom;
+    localStorage.removeItem('ig_invite_from');
   }
   // 离线收益
   if (igState.lastTime) {
@@ -2548,8 +2621,7 @@ setInterval(()=>{
   if (c > 0) {
     igState.soilBalance += c/10 * buffMult;
     igMountainData().progress += c/10 * buffMult;
-    const act = igActiveActivity();
-    igState.cultivation = (igState.cultivation || 0) + c/10 * 0.02 * (act && act.cult ? act.cult : 1); // 打坐悟道：产出2%化为修为（月下悟道x2）
+    igState.cultivation = (igState.cultivation || 0) + c/10 * 0.02; // 打坐悟道：产出2%化为修为
   }
   // 自动点击器
   if (igState.autoClicker > 0) {
