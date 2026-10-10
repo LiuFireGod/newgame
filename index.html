@@ -545,6 +545,17 @@
     cursor: not-allowed;
   }
 
+  /* 公告 / 活动 */
+  .ig-notice {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
   /* 排行榜标签 */
   .rank-tab {
     padding: 7px 16px;
@@ -683,14 +694,17 @@
 
   <!-- 游戏视图：愚公移山 -->
   <div class="game-view" id="gameView">
-    <!-- 山选择标签 -->
+    <!-- 顶部工具行：山选择 + 排行榜 -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <div class="ig-mountain-tabs" id="igMountainTabs" style="margin-bottom:0;"></div>
+      <button class="ig-shop-btn" style="background:#a29bfe;color:#333;" onclick="igOpenMountainPicker()">⛰️ <span id="igCurMountain">太行山</span></button>
       <div style="display:flex;gap:8px;">
         <button class="ig-shop-btn" style="background:#00b894;" onclick="openRank()">🏆 排行榜</button>
-        <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="document.getElementById('adminPanel').classList.add('show')">后台</button>
+        <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="openAdminPanel()">后台</button>
       </div>
     </div>
+    <!-- 公告 + 限时活动 -->
+    <div class="ig-notice" id="igNotice"></div>
+    <div class="ig-notice" id="igActivity"></div>
     <div class="ig-win" id="igWin">这座山已挖平！</div>
     <div class="ig-stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));">
       <div class="ig-stat">
@@ -790,23 +804,40 @@
 <div class="modal-overlay" id="profileModal">
   <div class="modal" style="max-width:400px;">
     <button class="close-modal" onclick="document.getElementById('profileModal').classList.remove('show')">&times;</button>
-    <div class="profile-avatar" id="pfAvatar">我</div>
-    <div class="profile-name" id="pfName">用户名</div>
-    <div class="profile-stats">
-      <div class="profile-stat">
-        <div class="profile-stat-num" id="pfCoins">0</div>
-        <div class="profile-stat-label">金币</div>
-      </div>
-      <div class="profile-stat">
-        <div class="profile-stat-num" id="pfSoil">0</div>
-        <div class="profile-stat-label">总挖土方</div>
-      </div>
-      <div class="profile-stat">
-        <div class="profile-stat-num" id="pfMountains">0</div>
-        <div class="profile-stat-label">已挖山</div>
+    <div style="text-align:center;margin-bottom:8px;">
+      <div class="profile-avatar" id="pfAvatar" onclick="pfPickAvatar()" style="cursor:pointer;">A</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">点击头像修改</div>
+    </div>
+    <div id="pfAvatarPicker" style="display:none;background:var(--bg-secondary);border-radius:12px;padding:12px;margin-bottom:16px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">选择颜色</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;" id="pfColorRow"></div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <label class="ig-shop-btn" style="background:#6c5ce7;color:#fff;cursor:pointer;display:inline-block;">📷 上传图片<input type="file" id="pfUpload" accept="image/*" style="display:none;" onchange="pfUploadImage(this)"></label>
+        <button class="ig-shop-btn" style="background:#2ecc71;" onclick="pfRemoveImage()">移除图片</button>
       </div>
     </div>
-    <div id="pfMountainList"></div>
+    <div class="form-group">
+      <label>名称</label>
+      <input type="text" id="pfNameInput" maxlength="16" placeholder="输入你的显示名称">
+    </div>
+    <div class="form-group">
+      <label>账号（登录用，不可修改）</label>
+      <input type="text" id="pfAccount" readonly style="opacity:.6;">
+    </div>
+    <div class="form-group">
+      <label>个人简介</label>
+      <textarea id="pfBio" rows="3" maxlength="120" placeholder="介绍一下自己（最多120字）" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;font-size:13px;resize:none;"></textarea>
+    </div>
+    <button class="btn-primary" style="width:100%;" onclick="pfSave()">保存修改</button>
+  </div>
+</div>
+
+<!-- ===== 山选择弹窗 ===== -->
+<div class="modal-overlay" id="igMountainPicker">
+  <div class="modal" style="max-width:520px;">
+    <button class="close-modal" onclick="document.getElementById('igMountainPicker').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">选择要挖的山</h2>
+    <div id="igMountainPickerList" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;"></div>
   </div>
 </div>
 
@@ -829,6 +860,34 @@
       <div style="display:flex;gap:8px;">
         <input type="number" id="admCoins" placeholder="输入金币数">
         <button class="ig-shop-btn" onclick="admSetCoins()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>灵石</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admStones" placeholder="当前灵石数">
+        <button class="ig-shop-btn" style="background:#74b9ff;color:#333;" onclick="admSetStones()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>修为</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admCultivation" placeholder="当前修为">
+        <button class="ig-shop-btn" style="background:#a29bfe;color:#333;" onclick="admSetCultivation()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>境界（0=炼气 1=筑基 2=金丹 3=元婴 4=化神 5=合体 6=大乘 7=渡劫 8=飞升）</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admRealm" min="0" max="8" placeholder="当前境界数字">
+        <button class="ig-shop-btn" style="background:#a29bfe;color:#333;" onclick="admSetRealm()">设置</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>人口（口）</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="admPopulation" placeholder="当前人口">
+        <button class="ig-shop-btn" style="background:#fd79a8;color:#fff;" onclick="admSetPopulation()">设置</button>
       </div>
     </div>
     <div class="form-group">
@@ -982,8 +1041,9 @@ function getCurrentUser() {
     const users = getUsers();
     const real = users.find(x => x.lname === (u.lname || u.name.toLowerCase()));
     if (!real) return null;
-    // 云端字段（管理员/封禁标记）以 gh_current 快照为准，避免刷新后丢失
-    return Object.assign({}, real, { avatarColor: real.avatar_color }, { is_admin: u.is_admin, banned: u.banned });
+    // 安全：is_admin/banned 一律不信任本地快照（可伪造），启动时由 refreshCloudPerms 从云端复核写入；
+    // 云端不可用时回退到硬编码 ADMIN_USERS 名单
+    return Object.assign({}, real, { avatarColor: real.avatar_color }, { is_admin: false, banned: false });
   } catch { return null; }
 }
 function setCurrentUser(u) {
@@ -1039,7 +1099,7 @@ async function cloudCreateUser(u) {
 function ensureLocalUser(u) {
   const users = getUsers();
   if (!users.find(x => x.lname === u.lname)) {
-    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color });
+    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null });
     saveUsers(users);
   }
 }
@@ -1069,7 +1129,8 @@ async function handleAuth() {
       else if (user.password_hash !== hash && user.hash !== hash) { showToast('密码错误，请重新输入'); }
       else if (user.banned === true) { showToast('该账号已被封禁，请联系管理员'); }
       else {
-        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color, is_admin: user.is_admin, banned: user.banned };
+        const lsLocal = getUsers().find(x => x.lname === lname); // 本地资料优先（名称/头像/简介以最后编辑为准）
+        currentUser = { name: (lsLocal && lsLocal.name) || user.name, lname: user.lname || lname, hash: hash, avatar_color: (lsLocal && lsLocal.avatar_color) || user.avatar_color, avatarColor: (lsLocal && lsLocal.avatar_color) || user.avatar_color, is_admin: user.is_admin, banned: user.banned, bio: (lsLocal && lsLocal.bio) || user.bio, avatar_img: (lsLocal && lsLocal.avatar_img) || user.avatar_img };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1112,8 +1173,13 @@ async function handleAuth() {
 function updateNavUser() {
   const avatar = document.getElementById('navAvatar');
   if (currentUser && currentUser.name) {
-    avatar.textContent = currentUser.name[0].toUpperCase();
-    avatar.style.background = currentUser.avatarColor || 'linear-gradient(135deg, #ff6b81, #a29bfe)';
+    if (currentUser.avatar_img) {
+      avatar.textContent = '';
+      avatar.style.background = 'url("' + currentUser.avatar_img + '") center / cover no-repeat';
+    } else {
+      avatar.textContent = currentUser.name[0].toUpperCase();
+      avatar.style.background = currentUser.avatarColor || 'linear-gradient(135deg, #ff6b81, #a29bfe)';
+    }
   } else {
     avatar.textContent = '?';
     avatar.style.background = 'var(--bg-secondary)';
@@ -1143,37 +1209,92 @@ function logout() {
   showToast('请登录其他账号');
 }
 
-// 个人中心
+// ===== 个人中心（资料编辑） =====
+const PF_COLORS = ['#ff6b81','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#6c5ce7','#a29bfe','#fd79a8','#00b894'];
 function openProfile() {
   if (!currentUser) { openAuth(); return; }
   document.getElementById('userMenu').classList.remove('show');
-
-  document.getElementById('pfName').textContent = currentUser.name;
-  const av = document.getElementById('pfAvatar');
-  av.textContent = currentUser.name[0].toUpperCase();
-  av.style.background = currentUser.avatarColor || 'linear-gradient(135deg,#ff6b81,#a29bfe)';
-
-  // 愚公移山统计
-  const coins = igState.coins || 0;
-  let totalSoil = 0, doneMountains = 0;
-  const mountainListHtml = IG_MOUNTAINS.map(m=>{
-    const md = igState.mountains[m.id] || {progress:0};
-    totalSoil += md.progress;
-    const pct = Math.min(100, md.progress/m.total*100);
-    if (md.progress >= m.total) doneMountains++;
-    return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span>${m.name}</span>
-      <span style="color:${pct>=100?'var(--green)':'var(--text-secondary)'}">${pct.toFixed(1)}%${pct>=100?' ✓':''}</span>
-    </div>`;
-  }).join('');
-
-  document.getElementById('pfCoins').textContent = igFmt(coins);
-  document.getElementById('pfSoil').textContent = igFmt(totalSoil);
-  document.getElementById('pfMountains').textContent = doneMountains + '/' + IG_MOUNTAINS.length;
-  document.getElementById('pfMountainList').innerHTML =
-    '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">游戏进度</div>' + mountainListHtml;
-
+  pfRenderAvatar();
+  document.getElementById('pfNameInput').value = currentUser.name || '';
+  document.getElementById('pfAccount').value = currentUser.lname || currentUser.name.toLowerCase();
+  document.getElementById('pfBio').value = currentUser.bio || '';
+  document.getElementById('pfAvatarPicker').style.display = 'none';
+  pfRenderColors();
   document.getElementById('profileModal').classList.add('show');
+}
+function pfRenderAvatar() {
+  const av = document.getElementById('pfAvatar');
+  av.textContent = '';
+  if (currentUser && currentUser.avatar_img) {
+    av.style.background = 'url("' + currentUser.avatar_img + '") center / cover no-repeat';
+  } else {
+    av.style.background = (currentUser && currentUser.avatarColor) || 'linear-gradient(135deg,#ff6b81,#a29bfe)';
+    av.textContent = ((currentUser && currentUser.name) || 'U')[0].toUpperCase();
+  }
+}
+function pfRenderColors() {
+  const cur = currentUser.avatarColor || '';
+  document.getElementById('pfColorRow').innerHTML = PF_COLORS.map(c =>
+    `<div onclick="pfSetColor('${c}')" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${cur === c ? '#fff' : 'transparent'};"></div>`
+  ).join('');
+}
+function pfPickAvatar() {
+  const p = document.getElementById('pfAvatarPicker');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+function pfSetColor(c) {
+  currentUser.avatarColor = c;
+  currentUser.avatar_color = c;
+  currentUser.avatar_img = null; // 换色即移除图片
+  pfRenderAvatar();
+  pfRenderColors();
+}
+function pfUploadImage(input) {
+  const f = input && input.files && input.files[0];
+  if (!f) return;
+  if (f.size > 500 * 1024) { showToast('图片过大，请选择 500KB 以内的图片'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    currentUser.avatar_img = e.target.result;
+    pfRenderAvatar();
+  };
+  reader.readAsDataURL(f);
+}
+function pfRemoveImage() {
+  currentUser.avatar_img = null;
+  pfRenderAvatar();
+}
+function pfSave() {
+  if (!currentUser) return;
+  const name = document.getElementById('pfNameInput').value.trim();
+  if (!name) { showToast('名称不能为空'); return; }
+  if (name.length > 16) { showToast('名称最长16个字符'); return; }
+  const bio = document.getElementById('pfBio').value.trim().slice(0, 120);
+  currentUser.name = name;
+  currentUser.bio = bio;
+  // 更新本地用户列表（账号 lname 保持不变）
+  const users = getUsers();
+  const idx = users.findIndex(x => x.lname === currentUser.lname);
+  if (idx >= 0) {
+    users[idx].name = name;
+    users[idx].bio = bio;
+    if (currentUser.avatarColor) users[idx].avatar_color = currentUser.avatarColor;
+    if (currentUser.avatar_img) users[idx].avatar_img = currentUser.avatar_img;
+    else delete users[idx].avatar_img;
+    saveUsers(users);
+  }
+  setCurrentUser(currentUser);
+  updateNavUser();
+  cloudUpdateProfile(currentUser); // 云端尽力同步（失败不影响本地）
+  document.getElementById('profileModal').classList.remove('show');
+  showToast('个人资料已保存');
+}
+async function cloudUpdateProfile(u) {
+  try {
+    await supabaseRest('PATCH', 'users', 'lname=eq.' + encodeURIComponent(u.lname), {
+      name: u.name, avatar_color: u.avatarColor || u.avatar_color, bio: u.bio, avatar_img: u.avatar_img || null
+    });
+  } catch(e) { /* 云端不同步时本地资料仍生效 */ }
 }
 
 // 点击弹窗外部关闭
@@ -1314,7 +1435,35 @@ document.addEventListener('click', (e) => {
 currentUser = getCurrentUser();
 updateNavUser();
 loadLiked();
-if (currentUser) cloudHeartbeat(currentUser.name);
+if (currentUser) {
+  cloudHeartbeat(currentUser.name);
+  refreshCloudPerms(); // 云端复核真实权限（管理员/封禁），防本地伪造
+}
+
+// ===== 权限云端复核 =====
+async function refreshCloudPerms() {
+  if (!currentUser) return;
+  const lname = currentUser.lname || currentUser.name.toLowerCase();
+  let cloud = null;
+  try {
+    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin,banned&limit=1');
+    cloud = rows && rows[0] ? rows[0] : null;
+  } catch(e) { /* 云端不可用：is_admin 回退硬编码名单 */ }
+  if (cloud) {
+    // 硬编码名单永远优先（asd1316947244 无论云端字段如何都是管理员），云端值作补充
+    currentUser.is_admin = ADMIN_USERS.includes(lname) || cloud.is_admin === true;
+    currentUser.banned = cloud.banned === true;
+    setCurrentUser(currentUser); // 写回真实值，覆盖伪造快照
+  } else {
+    currentUser.is_admin = ADMIN_USERS.includes(lname);
+  }
+  if (currentUser.banned) {
+    logout();
+    showToast('该账号已被封禁，请联系管理员');
+    return;
+  }
+  updateNavUser();
+}
 
 // ===== 帖子数据（初始为空） =====
 const posts = [];
@@ -1533,6 +1682,19 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
 
 // ===== 愚公移山内嵌游戏 =====
 // 多座山配置，以后加新山直接在这里加
+// ===== 游戏公告（新增内容写在这里） =====
+const IG_NOTICES = [
+  { date: '2026-10-11', title: '修仙系统上线', content: '新增境界修炼、灵石商店与人口系统，产出更高，挖山更快！' },
+  { date: '2026-10-10', title: '13座大山 × 12位神话Boss', content: '新增不灭仙山与十二位神话Boss，挑战更刺激。' },
+  { date: '2026-10-10', title: '全新排行榜', content: '挖山 / 金币 / 进度 / Boss 四大榜单，全服玩家同台竞技。' },
+];
+// ===== 限时活动（每日固定时段生效） =====
+const IG_ACTIVITIES = [
+  { id: 'dawn', name: '黎明破晓', icon: '🌅', desc: '全体产出 +50%', startH: 6, endH: 9, mult: 1.5 },
+  { id: 'noon', name: '正午烈阳', icon: '☀️', desc: '点击威力 x2', startH: 12, endH: 14, click: 2 },
+  { id: 'dusk', name: '黄昏祈福', icon: '🌆', desc: '全体产出 +30%', startH: 17, endH: 19, mult: 1.3 },
+  { id: 'night', name: '月下悟道', icon: '🌙', desc: '修为获取 x2', startH: 20, endH: 22, cult: 2 },
+];
 const IG_MOUNTAINS = [
   { id: 'taihang', name: '太行山', total: 100000, unlockDesc: '初始开放' },
   { id: 'wangwu', name: '王屋山', total: 500000, unlockAt: 'taihang', unlockDesc: '挖完太行山解锁' },
@@ -1697,6 +1859,8 @@ function igCps() {
   IG_SECT_SHOP.forEach(it => {
     if (tc[it.id] && it.type === 'mult') c *= Math.pow(it.value, tc[it.id]); // 功法叠加
   });
+  const act = igActiveActivity(); // 限时活动加成
+  if (act && act.mult) c *= act.mult;
   return c;
 }
 function igClickDmg() {
@@ -1705,6 +1869,8 @@ function igClickDmg() {
   igGoldShop.forEach(item => {
     if (gu[item.id] && item.type === 'clickMult') dmg *= item.value;
   });
+  const act = igActiveActivity(); // 限时活动加成（正午烈阳：点击x2）
+  if (act && act.click) dmg *= act.click;
   return dmg;
 }
 function igFmt(n) {
@@ -1776,7 +1942,8 @@ function igDoDig() {
   igState.soilBalance += dmg;
   igMountainData().progress += dmg;
   igState.totalClicks = (igState.totalClicks || 0) + 1;
-  igState.cultivation = (igState.cultivation || 0) + dmg * 0.05; // 挖山悟道：点击修为+5%
+  const act = igActiveActivity();
+  igState.cultivation = (igState.cultivation || 0) + dmg * 0.05 * (act && act.cult ? act.cult : 1); // 挖山悟道：点击修为+5%（月下悟道x2）
   bossDamage(dmg); // 点击同时攻击Boss山
   // 每日任务计数
   const ds = igDailyState();
@@ -1893,25 +2060,37 @@ function igGetCurrentMountain() {
   return IG_MOUNTAINS[IG_MOUNTAINS.length-1].id;
 }
 function igRenderMountainTabs() {
-  // 所有山都保留显示；已挖完的标注"✓"，未解锁的显示锁定
-  document.getElementById('igMountainTabs').innerHTML = IG_MOUNTAINS.map(m=>{
+  // 顶部只显示当前山按钮（13座山收纳进选择弹窗）
+  const mCfg = IG_MOUNTAINS.find(x=>x.id===igCurrentMountain);
+  const el = document.getElementById('igCurMountain');
+  if (el && mCfg) el.textContent = mCfg.name;
+}
+function igOpenMountainPicker() {
+  document.getElementById('igMountainPickerList').innerHTML = IG_MOUNTAINS.map(m=>{
     const d = igState.mountains[m.id];
     const done = d && d.progress >= m.total;
     const unlocked = igMountainUnlocked(m);
-    const label = done ? m.name + ' ✓' : m.name;
-    return `<div class="ig-m-tab ${igCurrentMountain===m.id?'active':''} ${unlocked?'':'locked'}" 
-      ${unlocked?`onclick="igSwitchMountain('${m.id}')"`:''} 
-      title="${done?'已完成 '+m.name : (unlocked?'切换到'+m.name:m.unlockDesc)}">${label}</div>`;
+    const pct = d ? Math.min(100, d.progress/m.total*100) : 0;
+    const active = igCurrentMountain === m.id;
+    return `<div onclick="igPickMountain('${m.id}')" style="cursor:${unlocked?'pointer':'not-allowed'};background:${active?'rgba(162,155,254,.2)':'var(--bg-secondary)'};border:1px solid ${active?'#a29bfe':'var(--border)'};border-radius:10px;padding:10px;opacity:${unlocked?1:.45};">
+      <div style="font-size:13px;font-weight:600;">${done?'✅ ':''}${m.name}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${done?'已挖平':(unlocked? igFmt(d?d.progress:0)+' / '+igFmt(m.total)+' · '+pct.toFixed(1)+'%' : '🔒 '+m.unlockDesc)}</div>
+    </div>`;
   }).join('');
+  document.getElementById('igMountainPicker').classList.add('show');
 }
-
-function igSwitchMountain(id) {
+function igPickMountain(id) {
   const m = IG_MOUNTAINS.find(x=>x.id===id);
   if (!m || !igMountainUnlocked(m)) return;
   igCurrentMountain = id;
+  document.getElementById('igMountainPicker').classList.remove('show');
   igRender();
   igSave();
 }
+function igSwitchMountain(id) { igPickMountain(id); }
+document.getElementById('igMountainPicker').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
 
 function igRender() {
   // 山标签
@@ -1932,6 +2111,8 @@ function igRender() {
   document.getElementById('igStones').textContent = igFmt(igState.spiritStones || 0);
   document.getElementById('igPopStat').textContent = (igState.population || 1) + '口';
   igRenderSect();
+  igRenderNotice();
+  igRenderActivity();
   // 技能CD
   const skillBtn = document.getElementById('igSkillBtn');
   const skillCd = document.getElementById('igSkillCd');
@@ -2163,6 +2344,43 @@ function igRenderSect() {
     ${sectHtml}`;
 }
 
+// ===== 公告 + 限时活动渲染 =====
+function igActiveActivity() {
+  const h = new Date().getHours();
+  return IG_ACTIVITIES.find(a => {
+    if (a.startH <= a.endH) return h >= a.startH && h < a.endH;
+    return h >= a.startH || h < a.endH; // 跨午夜
+  });
+}
+function igRenderNotice() {
+  const el = document.getElementById('igNotice');
+  if (!el) return;
+  el.innerHTML = '<div style="font-size:12px;font-weight:700;color:#f1c40f;margin-bottom:4px;">📢 游戏公告</div>' +
+    IG_NOTICES.map(n => `<div style="display:flex;gap:8px;padding:3px 0;">
+      <span style="color:#a29bfe;white-space:nowrap;">${n.date}</span>
+      <span><b>${n.title}</b>：${n.content}</span>
+    </div>`).join('');
+}
+function igRenderActivity() {
+  const el = document.getElementById('igActivity');
+  if (!el) return;
+  const h = new Date().getHours();
+  const act = igActiveActivity();
+  el.innerHTML = '<div style="font-size:12px;font-weight:700;color:#00b894;margin-bottom:4px;">🎉 限时活动</div>' +
+    IG_ACTIVITIES.map(a => {
+      const active = act && act.id === a.id;
+      let status;
+      if (active) status = '<span style="color:var(--green);font-weight:700;">进行中</span>';
+      else {
+        const until = ((a.startH - h + 24) % 24) || 24;
+        status = '<span style="color:var(--text-secondary);">' + until + ' 小时后开启</span>';
+      }
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span>${a.icon} <b>${a.name}</b> ${a.desc}（${a.startH}:00-${a.endH}:00）</span>${status}
+      </div>`;
+    }).join('');
+}
+
 function igBuyGold(id) {
   const item = igGoldShop.find(x=>x.id===id);
   if (!item) return;
@@ -2330,7 +2548,8 @@ setInterval(()=>{
   if (c > 0) {
     igState.soilBalance += c/10 * buffMult;
     igMountainData().progress += c/10 * buffMult;
-    igState.cultivation = (igState.cultivation || 0) + c/10 * 0.02; // 打坐悟道：产出2%化为修为
+    const act = igActiveActivity();
+    igState.cultivation = (igState.cultivation || 0) + c/10 * 0.02 * (act && act.cult ? act.cult : 1); // 打坐悟道：产出2%化为修为（月下悟道x2）
   }
   // 自动点击器
   if (igState.autoClicker > 0) {
@@ -2369,7 +2588,51 @@ setInterval(()=>{
 }, 100);
 
 // ===== 游戏后台 =====
+function admGuard() { return !!(currentUser && isAdminUser(currentUser)); } // 函数级权限守卫
+function openAdminPanel() {
+  if (!admGuard()) return;
+  // 打开时回填当前值，方便直接看到并修改
+  document.getElementById('admSoil').value = Math.floor(igState.soilBalance || 0);
+  document.getElementById('admCoins').value = Math.floor(igState.coins || 0);
+  document.getElementById('admStones').value = Math.floor(igState.spiritStones || 0);
+  document.getElementById('admCultivation').value = Math.floor(igState.cultivation || 0);
+  document.getElementById('admRealm').value = igState.realm || 0;
+  document.getElementById('admPopulation').value = igState.population || 1;
+  document.getElementById('admProgress').value = Math.floor(igMountainData().progress || 0);
+  document.getElementById('admClick').value = igState.clickPower || 1;
+  document.getElementById('adminPanel').classList.add('show');
+}
+function admSetStones() {
+  if (!admGuard()) return;
+  const v = Math.max(0, Math.floor(parseFloat(document.getElementById('admStones').value) || 0));
+  igState.spiritStones = v;
+  igRender(); igSave();
+  showToast('灵石已设为 ' + v);
+}
+function admSetCultivation() {
+  if (!admGuard()) return;
+  const v = Math.max(0, Math.floor(parseFloat(document.getElementById('admCultivation').value) || 0));
+  igState.cultivation = v;
+  igRender(); igSave();
+  showToast('修为已设为 ' + v);
+}
+function admSetRealm() {
+  if (!admGuard()) return;
+  let v = Math.floor(parseFloat(document.getElementById('admRealm').value) || 0);
+  v = Math.max(0, Math.min(IG_REALMS.length - 1, v));
+  igState.realm = v;
+  igRender(); igSave();
+  showToast('境界已设为「' + IG_REALMS[v].name + '」');
+}
+function admSetPopulation() {
+  if (!admGuard()) return;
+  const v = Math.max(1, Math.floor(parseFloat(document.getElementById('admPopulation').value) || 1));
+  igState.population = v;
+  igRender(); igSave();
+  showToast('人口已设为 ' + v + ' 口');
+}
 function admSetSoil() {
+  if (!admGuard()) return;
   const v = parseFloat(document.getElementById('admSoil').value);
   if (isNaN(v)) return;
   igState.soilBalance = v;
@@ -2377,6 +2640,7 @@ function admSetSoil() {
   showToast('土方已设为 ' + v);
 }
 function admSetCoins() {
+  if (!admGuard()) return;
   const v = parseFloat(document.getElementById('admCoins').value);
   if (isNaN(v)) return;
   igState.coins = v;
@@ -2384,6 +2648,7 @@ function admSetCoins() {
   showToast('金币已设为 ' + v);
 }
 function admSetProgress() {
+  if (!admGuard()) return;
   const v = parseFloat(document.getElementById('admProgress').value);
   if (isNaN(v)) return;
   igMountainData().progress = v;
@@ -2391,6 +2656,7 @@ function admSetProgress() {
   showToast('当前山进度已设为 ' + v);
 }
 function admSetClick() {
+  if (!admGuard()) return;
   const v = parseFloat(document.getElementById('admClick').value);
   if (isNaN(v) || v < 1) return;
   igState.clickPower = v;
@@ -2398,6 +2664,7 @@ function admSetClick() {
   showToast('点击威力已设为 ' + v);
 }
 function admUnlockAll() {
+  if (!admGuard()) return;
   IG_MOUNTAINS.forEach(m => {
     if (!igState.mountains[m.id]) igState.mountains[m.id] = { progress: 0, claimed: {} };
     if (m.unlockAt) igState.mountains[m.unlockAt].progress = m.total;
@@ -2406,15 +2673,17 @@ function admUnlockAll() {
   showToast('所有山已解锁');
 }
 function admMaxProgress() {
+  if (!admGuard()) return;
   const mCfg = IG_MOUNTAINS.find(x=>x.id===igCurrentMountain);
   igMountainData().progress = mCfg.total;
   igRender(); igSave();
   showToast('当前山已挖满');
 }
 function admReset() {
+  if (!admGuard()) return;
   if (!confirm('确定要清空所有游戏数据吗？此操作不可恢复！')) return;
   localStorage.removeItem('ig_save');
-  igState = { soilBalance:0, mountains:{}, clickPower:1, gens:{}, tools:{}, coins:0, goldUp:{}, achievements:{}, autoClicker:0, totalClicks:0 };
+  igState = { soilBalance:0, mountains:{}, clickPower:1, gens:{}, tools:{}, coins:0, goldUp:{}, achievements:{}, autoClicker:0, totalClicks:0, realm:0, cultivation:0, spiritStones:0, techniques:{}, population:1, bossLevel:0, bossKills:0, bossBonus:0, bossState:'idle', bossHp:0, bossMax:0, bossUntil:0, bossCooldown:0 };
   igCurrentMountain = 'taihang';
   igRender();
   showToast('游戏存档已清空');
@@ -2443,7 +2712,7 @@ document.addEventListener('keydown', (e)=>{
     if (document.activeElement.tagName === 'INPUT') return;
     if (!currentUser) return;
     if (!isAdminUser(currentUser)) return;
-    document.getElementById('adminPanel').classList.add('show');
+    openAdminPanel();
   }
 });
 
