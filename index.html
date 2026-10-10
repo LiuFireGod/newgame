@@ -618,6 +618,7 @@
       <div class="user-menu" id="userMenu">
         <div class="user-menu-item" onclick="openProfile()">个人中心</div>
         <div class="user-menu-item" onclick="openMyPosts()">我的帖子</div>
+        <div class="user-menu-item" id="menuAdmin" style="display:none;" onclick="location.href='admin-users.html'">管理后台</div>
         <div class="user-menu-item logout" onclick="logout()">切换账号</div>
       </div>
     </div>
@@ -929,7 +930,9 @@ function getCurrentUser() {
     if (!u || !u.name) return null;
     const users = getUsers();
     const real = users.find(x => x.lname === (u.lname || u.name.toLowerCase()));
-    return real ? Object.assign({}, real, { avatarColor: real.avatar_color }) : null;
+    if (!real) return null;
+    // 云端字段（管理员/封禁标记）以 gh_current 快照为准，避免刷新后丢失
+    return Object.assign({}, real, { avatarColor: real.avatar_color }, { is_admin: u.is_admin, banned: u.banned });
   } catch { return null; }
 }
 function setCurrentUser(u) {
@@ -1013,8 +1016,9 @@ async function handleAuth() {
       if (!user) { const ls = getUsers(); user = ls.find(x => x.lname === lname); }
       if (!user) { showToast('该用户名不存在，请先注册'); }
       else if (user.password_hash !== hash && user.hash !== hash) { showToast('密码错误，请重新输入'); }
+      else if (user.banned === true) { showToast('该账号已被封禁，请联系管理员'); }
       else {
-        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color };
+        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color, is_admin: user.is_admin, banned: user.banned };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1064,6 +1068,8 @@ function updateNavUser() {
     avatar.style.background = 'var(--bg-secondary)';
     avatar.style.color = 'var(--text-secondary)';
   }
+  const adm = document.getElementById('menuAdmin');
+  if (adm) adm.style.display = (currentUser && isAdminUser(currentUser)) ? '' : 'none';
 }
 
 function toggleUserMenu() {
@@ -1735,16 +1741,15 @@ function igGetCurrentMountain() {
   return IG_MOUNTAINS[IG_MOUNTAINS.length-1].id;
 }
 function igRenderMountainTabs() {
-  // 只显示未挖完的山，已挖完的隐藏
-  const visible = IG_MOUNTAINS.filter(m=>{
+  // 所有山都保留显示；已挖完的标注"✓"，未解锁的显示锁定
+  document.getElementById('igMountainTabs').innerHTML = IG_MOUNTAINS.map(m=>{
     const d = igState.mountains[m.id];
-    return !d || d.progress < m.total;
-  });
-  document.getElementById('igMountainTabs').innerHTML = visible.map(m=>{
+    const done = d && d.progress >= m.total;
     const unlocked = igMountainUnlocked(m);
+    const label = done ? m.name + ' ✓' : m.name;
     return `<div class="ig-m-tab ${igCurrentMountain===m.id?'active':''} ${unlocked?'':'locked'}" 
       ${unlocked?`onclick="igSwitchMountain('${m.id}')"`:''} 
-      title="${unlocked?'切换到'+m.name:m.unlockDesc}">${m.name}</div>`;
+      title="${done?'已完成 '+m.name : (unlocked?'切换到'+m.name:m.unlockDesc)}">${label}</div>`;
   }).join('');
 }
 
@@ -2103,8 +2108,13 @@ function admReset() {
 document.getElementById('adminPanel').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
-// 管理员名单（不区分大小写）
+// 管理员名单（不区分大小写，云端 is_admin 优先）
 const ADMIN_USERS = ['asd1316947244'];
+function isAdminUser(u) {
+  if (!u) return false;
+  if (u.is_admin === true) return true;
+  return ADMIN_USERS.includes(u.lname || (u.name || '').toLowerCase());
+}
 
 // 在线心跳：登录状态下每20秒把"在线"状态上报云端
 async function cloudHeartbeat(userName) {
@@ -2124,8 +2134,8 @@ setInterval(() => { if (currentUser) cloudHeartbeat(currentUser.name); }, 20000)
 async function admLoadUsers() {
   let users = [];
   try {
-    const rows = await supabaseRest('GET', 'users', 'select=name,lname&order=created_at.desc&limit=500');
-    users = (rows || []).map(u => ({ name: u.name, lname: u.lname }));
+    const rows = await supabaseRest('GET', 'users', 'select=name,lname,is_admin&order=created_at.desc&limit=500');
+    users = (rows || []).map(u => ({ name: u.name, lname: u.lname, is_admin: u.is_admin }));
   } catch(e) {}
   if (!users.length) users = getUsers(); // 云端失败则回退本地
   // 按lname去重，保留第一个
@@ -2144,12 +2154,13 @@ async function admLoadUsers() {
     const online = new Set((onrows || []).map(r => r.user_name)).size;
     document.getElementById('admOnlineCount').textContent = online;
   } catch(e) { document.getElementById('admOnlineCount').textContent = '?'; }
-  document.getElementById('admUserList').innerHTML = list.map((u,i)=>
-    `<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+  document.getElementById('admUserList').innerHTML = list.map((u,i)=>{
+    const isA = isAdminUser(u);
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
       <span>${i+1}. ${u.name}</span>
-      <span style="color:${ADMIN_USERS.includes(u.lname)?'var(--accent-light)':'var(--text-secondary)'};font-size:11px;">${ADMIN_USERS.includes(u.lname)?'管理员':''}</span>
-    </div>`
-  ).join('') || '<div style="color:var(--text-secondary);">暂无注册用户</div>';
+      <span style="color:${isA?'var(--accent-light)':'var(--text-secondary)'};font-size:11px;">${isA?'管理员':''}</span>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-secondary);">暂无注册用户</div>';
 }
 
 // 按 B 键呼出后台（需要管理员权限，无权限静默不响应）
@@ -2157,7 +2168,7 @@ document.addEventListener('keydown', (e)=>{
   if (e.key === 'b' || e.key === 'B') {
     if (document.activeElement.tagName === 'INPUT') return;
     if (!currentUser) return;
-    if (!ADMIN_USERS.includes(currentUser.lname || currentUser.name.toLowerCase())) return;
+    if (!isAdminUser(currentUser)) return;
     admLoadUsers();
     document.getElementById('adminPanel').classList.add('show');
   }

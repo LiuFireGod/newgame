@@ -3,30 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>用户管理</title>
+<title>管理后台 - GameHub</title>
 <style>
   :root {
     --bg: #0d0d12; --bg-secondary: #1a1a22; --card: #171720;
     --border: #2a2a36; --text-primary: #f0eef6; --text-secondary: #9a97a6;
-    --accent: #6c5ce7; --accent-light: #a29bfe; --green: #2ecc71; --red: #e74c3c;
+    --accent: #6c5ce7; --accent-light: #a29bfe; --green: #2ecc71; --red: #e74c3c; --yellow: #f1c40f;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:var(--bg); color:var(--text-primary); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; min-height:100vh; }
-  .wrap { max-width:520px; margin:0 auto; padding:24px 16px 40px; }
-  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .wrap { max-width:880px; margin:0 auto; padding:24px 16px 48px; }
+
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
   h1 { font-size:20px; }
-  .meta { display:flex; gap:20px; font-size:14px; margin-bottom:16px; }
-  .meta b { color:var(--accent-light); }
-  .list { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-  .row { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--border); font-size:14px; }
+  .top-actions { display:flex; gap:10px; }
+  .btn { border:none; cursor:pointer; border-radius:9px; padding:8px 16px; font-size:14px; color:#fff; }
+  .btn-primary { background:var(--accent); }
+  .btn-ghost { background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); text-decoration:none; display:inline-block; }
+  .btn:active { opacity:.8; }
+  .btn-small { padding:5px 12px; font-size:12px; border-radius:8px; }
+
+  .warn { background:rgba(241,196,15,.12); border:1px solid rgba(241,196,15,.4); color:#f1c40f; border-radius:12px; padding:12px 16px; font-size:13px; line-height:1.7; margin-bottom:16px; }
+  .warn code { background:rgba(0,0,0,.35); padding:1px 6px; border-radius:5px; font-size:12px; }
+
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+  .stat { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+  .stat-label { font-size:12px; color:var(--text-secondary); margin-bottom:8px; }
+  .stat-value { font-size:26px; font-weight:800; }
+  .stat-sub { font-size:12px; color:var(--text-secondary); margin-top:4px; }
+
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { padding:8px 18px; border-radius:10px; background:var(--card); border:1px solid var(--border); color:var(--text-secondary); font-size:14px; cursor:pointer; }
+  .tab.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+
+  .search { margin-bottom:14px; }
+  .search input { width:100%; background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; padding:10px 14px; color:var(--text-primary); font-size:14px; outline:none; }
+  .search input:focus { border-color:var(--accent); }
+
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); font-size:14px; flex-wrap:wrap; }
   .row:last-child { border-bottom:none; }
-  .tag-admin { color:var(--accent-light); font-size:12px; }
-  .refresh { background:var(--accent); border:none; color:#fff; padding:8px 16px; border-radius:9px; cursor:pointer; font-size:14px; }
-  .refresh:active { opacity:.8; }
-  .deny { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:32px; text-align:center; }
-  .deny .icon { font-size:40px; margin-bottom:12px; }
+  .row-main { min-width:0; flex:1; }
+  .row-title { font-weight:600; margin-bottom:3px; word-break:break-word; }
+  .row-meta { font-size:12px; color:var(--text-secondary); display:flex; gap:10px; flex-wrap:wrap; }
+  .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .empty { padding:32px; text-align:center; color:var(--text-secondary); font-size:14px; }
+
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; margin-left:6px; vertical-align:middle; }
+  .tag-admin { background:rgba(108,92,231,.2); color:var(--accent-light); }
+  .tag-ban { background:rgba(231,76,60,.18); color:var(--red); }
+  .tag-user { background:var(--bg-secondary); color:var(--text-secondary); }
+
+  .btn-ban { background:var(--red); }
+  .btn-unban { background:var(--green); }
+  .btn-admin { background:var(--accent); }
+  .btn-del { background:var(--red); }
+
+  .deny { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:48px 32px; text-align:center; }
+  .deny .icon { font-size:44px; margin-bottom:12px; }
   .deny p { color:var(--text-secondary); font-size:14px; margin-top:8px; }
   .btn-back { display:inline-block; margin-top:18px; color:var(--accent-light); text-decoration:none; font-size:14px; }
+
+  .loading { padding:24px; text-align:center; color:var(--text-secondary); font-size:14px; }
+  @media (max-width:560px){ .row { flex-direction:column; align-items:stretch; } .row-actions { justify-content:flex-end; } }
 </style>
 </head>
 <body>
@@ -36,14 +76,18 @@
 <script>
 const SUPABASE_URL = 'https://ycxasrnnvwhcvzkmwhxu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qALYuuKrijmsInYREJ8xyw_qkYJ8G7I';
-const ADMIN_USERS = ['asd1316947244'];
+const ADMIN_USERS = ['asd1316947244']; // 本地兜底名单（云端 is_admin 优先）
 
 async function supabaseRest(method, table, query, body) {
   const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (query ? '?' + query : ''), opts);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) {
+    let msg = 'HTTP ' + r.status;
+    try { const j = await r.json(); msg = (j.message || j.error_description || msg); } catch(e) {}
+    throw new Error(msg);
+  }
   return r.json();
 }
 
@@ -56,11 +100,218 @@ function getCurrentUser() {
 }
 function isAdmin(u) {
   if (!u) return false;
-  return ADMIN_USERS.includes(u.lname || u.name.toLowerCase());
+  if (u.is_admin === true) return true;
+  return ADMIN_USERS.includes((u.lname || (u.name || '').toLowerCase()));
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function ago(iso) {
+  if (!iso) return '—';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return Math.max(0, Math.floor(s)) + ' 秒前';
+  if (s < 3600) return Math.floor(s/60) + ' 分钟前';
+  if (s < 86400) return Math.floor(s/3600) + ' 小时前';
+  return Math.floor(s/86400) + ' 天前';
+}
+function toast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.style.cssText = 'position:fixed;left:50%;bottom:36px;transform:translateX(-50%);background:#22222e;border:1px solid var(--border);color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;z-index:999;box-shadow:0 8px 30px rgba(0,0,0,.4);'; document.body.appendChild(t); }
+  t.textContent = msg;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.remove(), 2400);
 }
 
-function renderDeny() {
-  document.getElementById('app').innerHTML = `
+// ===== 状态 =====
+let allUsers = [], allPosts = [], allComments = [], onlineNames = new Set();
+let hasBanned = false, hasAdmin = false, dbReady = false;
+let curTab = 'overview', query = '';
+
+// ===== 数据加载 =====
+async function loadAll() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">数据加载中…</div>';
+  const today = new Date(); today.setHours(0,0,0,0);
+  try {
+    const [users, posts, comments, onrows] = await Promise.all([
+      supabaseRest('GET', 'users', 'select=*&order=created_at.desc&limit=1000').catch(() => []),
+      supabaseRest('GET', 'posts', 'select=id,user_name,avatar_color,game,title,content,likes,created_at&order=created_at.desc&limit=1000').catch(() => []),
+      supabaseRest('GET', 'comments', 'select=id,post_id,user_name,content,created_at&order=created_at.desc&limit=2000').catch(() => []),
+      supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(new Date(Date.now()-60000).toISOString()) + '&select=user_name').catch(() => [])
+    ]);
+    allUsers = users || []; allPosts = posts || []; allComments = comments || [];
+    onlineNames = new Set((onrows || []).map(r => r.user_name));
+    const probeRow = (allUsers && allUsers[0]) || {};
+    hasBanned = 'banned' in probeRow;
+    hasAdmin = 'is_admin' in probeRow;
+    dbReady = true;
+  } catch(e) {
+    dbReady = true;
+  }
+  render();
+}
+
+// ===== 渲染 =====
+function switchTab(t) {
+  curTab = t;
+  query = '';
+  render();
+}
+function onSearch(v) {
+  query = v.trim().toLowerCase();
+  render();
+}
+
+function render() {
+  const app = document.getElementById('app');
+  const u = getCurrentUser();
+  if (!isAdmin(u)) { renderDeny(app); return; }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayPosts = allPosts.filter(p => new Date(p.created_at) >= today).length;
+
+  const tabsHtml = `
+    <div class="top">
+      <h1>⚙️ 管理后台</h1>
+      <div class="top-actions">
+        <a class="btn btn-ghost" href="index.html">← 返回社区</a>
+        <button class="btn btn-primary" onclick="loadAll()">刷新</button>
+      </div>
+    </div>
+    ${!hasBanned || !hasAdmin ? `
+    <div class="warn">
+      ⚠️ 数据库尚未升级：封禁 / 管理员指派功能不可用。请在 Supabase 控制台执行：<br>
+      <code>ALTER TABLE public.users ADD COLUMN IF NOT EXISTS banned boolean NOT NULL DEFAULT false;</code><br>
+      <code>ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;</code><br>
+      （详见项目内 <code>db-upgrade.sql.md</code>）执行后点击「刷新」。
+    </div>` : ''}
+    <div class="stats">
+      <div class="stat"><div class="stat-label">注册用户</div><div class="stat-value">${allUsers.length}</div><div class="stat-sub">今日新增 ${allUsers.filter(x => new Date(x.created_at) >= today).length}</div></div>
+      <div class="stat"><div class="stat-label">当前在线</div><div class="stat-value" style="color:var(--green);">${onlineNames.size}</div><div class="stat-sub">60 秒内有活跃</div></div>
+      <div class="stat"><div class="stat-label">帖子总数</div><div class="stat-value">${allPosts.length}</div><div class="stat-sub">今日新帖 ${todayPosts}</div></div>
+      <div class="stat"><div class="stat-label">评论总数</div><div class="stat-value">${allComments.length}</div><div class="stat-sub">总点赞 ${allPosts.reduce((s,p)=>s+(p.likes||0),0)}</div></div>
+      <div class="stat"><div class="stat-label">管理员</div><div class="stat-value" style="color:var(--accent-light);">${allUsers.filter(x=>x.is_admin===true||ADMIN_USERS.includes((x.lname||'').toLowerCase())).length}</div><div class="stat-sub">含本地名单</div></div>
+      <div class="stat"><div class="stat-label">封禁用户</div><div class="stat-value" style="color:${allUsers.some(x=>x.banned===true)?'var(--red)':'var(--text-secondary)'};">${allUsers.filter(x=>x.banned===true).length}</div><div class="stat-sub">${hasBanned?'':'数据库未升级'}</div></div>
+    </div>
+    <div class="tabs">
+      <div class="tab ${curTab==='overview'?'active':''}" onclick="switchTab('overview')">概览</div>
+      <div class="tab ${curTab==='users'?'active':''}" onclick="switchTab('users')">用户管理 (${allUsers.length})</div>
+      <div class="tab ${curTab==='posts'?'active':''}" onclick="switchTab('posts')">帖子管理 (${allPosts.length})</div>
+      <div class="tab ${curTab==='comments'?'active':''}" onclick="switchTab('comments')">评论管理 (${allComments.length})</div>
+    </div>
+    ${curTab !== 'overview' ? `<div class="search"><input id="searchBox" placeholder="搜索${curTab==='users'?'用户名':curTab==='posts'?'标题或作者':'评论内容或作者'}..." value="${esc(query)}" oninput="onSearch(this.value)"></div>` : ''}
+    <div id="body"></div>
+  `;
+  app.innerHTML = tabsHtml;
+  document.getElementById('body').innerHTML = renderBody();
+}
+
+function renderBody() {
+  if (curTab === 'overview') return renderOverview();
+  if (curTab === 'users') return renderUsers();
+  if (curTab === 'posts') return renderPosts();
+  if (curTab === 'comments') return renderComments();
+}
+
+function renderOverview() {
+  // 最近动态：最近注册用户 / 最新帖子 / 最新评论
+  const recentUsers = allUsers.slice(0, 5);
+  const recentPosts = allPosts.slice(0, 5);
+  const recentComments = allComments.slice(0, 5);
+  const postMap = {}; allPosts.forEach(p => postMap[p.id] = p);
+  const col = items => items.length
+    ? items.map((x,i)=>`<div class="row"><div class="row-main"><div class="row-title">${esc(x.title || x.name || x.content || '—')}</div><div class="row-meta">${esc(x.user_name || x.name || '')} · ${ago(x.created_at)}</div></div></div>`).join('')
+    : '<div class="empty">暂无数据</div>';
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;">
+      <div><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">最近注册</div><div class="card">${col(recentUsers)}</div></div>
+      <div><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">最新帖子</div><div class="card">${col(recentPosts)}</div></div>
+      <div><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">最新评论</div><div class="card">${col(recentComments)}</div></div>
+    </div>`;
+}
+
+function userStats(u) {
+  const name = u.name || '';
+  const posts = allPosts.filter(p => p.user_name === name).length;
+  const comments = allComments.filter(c => c.user_name === name).length;
+  return { posts, comments };
+}
+function renderUsers() {
+  const kw = query;
+  const list = allUsers.filter(u => {
+    if (!kw) return true;
+    return (u.name || '').toLowerCase().includes(kw) || (u.lname || '').includes(kw);
+  });
+  if (!list.length) return '<div class="card"><div class="empty">没有匹配的用户</div></div>';
+  return `<div class="card">${list.map((u,i)=>{
+    const isAdm = u.is_admin === true || ADMIN_USERS.includes((u.lname||'').toLowerCase());
+    const isBan = u.banned === true;
+    const st = userStats(u);
+    const tag = isAdm ? '<span class="tag tag-admin">管理员</span>' : (isBan ? '<span class="tag tag-ban">已封禁</span>' : '<span class="tag tag-user">用户</span>');
+    return `<div class="row">
+      <div class="row-main">
+        <div class="row-title"><span class="dot" style="background:${esc(u.avatar_color || '#6c5ce7')};"></span>${esc(u.name)}${tag}</div>
+        <div class="row-meta"><span>注册于 ${fmtTime(u.created_at)}</span><span>${st.posts} 帖</span><span>${st.comments} 评</span>${onlineNames.has(u.name)?'<span style="color:var(--green);">在线</span>':''}</div>
+      </div>
+      <div class="row-actions">
+        ${isAdm
+          ? `<button class="btn btn-small btn-ghost" ${hasAdmin?'':'disabled title="数据库未升级"' } onclick="setAdmin('${esc(u.lname)}',false,${i})">取消管理员</button>`
+          : `<button class="btn btn-small btn-admin" ${hasAdmin?'':'disabled title="数据库未升级"'} onclick="setAdmin('${esc(u.lname)}',true,${i})">设为管理员</button>`}
+        ${isBan
+          ? `<button class="btn btn-small btn-unban" ${hasBanned?'':'disabled title="数据库未升级"'} onclick="setBan('${esc(u.lname)}',false,${i})">解封</button>`
+          : `<button class="btn btn-small btn-ban" ${hasBanned?'':'disabled title="数据库未升级"'} onclick="setBan('${esc(u.lname)}',true,${i})">封禁</button>`}
+        <button class="btn btn-small btn-del" onclick="delUser('${esc(u.name)}','${esc(u.lname||'')}')">删除</button>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderPosts() {
+  const kw = query;
+  const list = allPosts.filter(p => {
+    if (!kw) return true;
+    return (p.title || '').toLowerCase().includes(kw) || (p.user_name || '').toLowerCase().includes(kw) || (p.game || '').toLowerCase().includes(kw);
+  });
+  if (!list.length) return '<div class="card"><div class="empty">没有匹配的帖子</div></div>';
+  const ccount = pid => allComments.filter(c => String(c.post_id) === String(pid)).length;
+  return `<div class="card">${list.map(p=>`
+    <div class="row">
+      <div class="row-main">
+        <div class="row-title">${esc(p.title)} <span class="tag tag-user">${esc(p.game||'')}</span></div>
+        <div class="row-meta"><span>${esc(p.user_name||'')}</span><span>${fmtTime(p.created_at)}</span><span>❤️ ${p.likes||0}</span><span>💬 ${ccount(p.id)}</span></div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;word-break:break-word;">${esc((p.content||'').slice(0,90))}</div>
+      </div>
+      <div class="row-actions"><button class="btn btn-small btn-del" onclick="delPost('${p.id}','${esc(p.title.replace(/'/g,''))}')">删除</button></div>
+    </div>`).join('')}</div>`;
+}
+
+function renderComments() {
+  const kw = query;
+  const postMap = {}; allPosts.forEach(p => postMap[p.id] = p);
+  const list = allComments.filter(c => {
+    if (!kw) return true;
+    return (c.content || '').toLowerCase().includes(kw) || (c.user_name || '').toLowerCase().includes(kw);
+  });
+  if (!list.length) return '<div class="card"><div class="empty">没有匹配的评论</div></div>';
+  return `<div class="card">${list.map(c=>`
+    <div class="row">
+      <div class="row-main">
+        <div class="row-title">${esc((c.content||'').slice(0,80))}</div>
+        <div class="row-meta"><span>${esc(c.user_name||'')}</span><span>${fmtTime(c.created_at)}</span><span>评论于「${esc((postMap[c.post_id]&&postMap[c.post_id].title)||'已删除的帖子')}」</span></div>
+      </div>
+      <div class="row-actions"><button class="btn btn-small btn-del" onclick="delComment('${c.id}')">删除</button></div>
+    </div>`).join('')}</div>`;
+}
+
+function renderDeny(app) {
+  app.innerHTML = `
     <div class="deny">
       <div class="icon">🔒</div>
       <div style="font-size:16px;font-weight:600;">无权限访问</div>
@@ -69,44 +320,60 @@ function renderDeny() {
     </div>`;
 }
 
-async function loadUsers() {
-  document.getElementById('app').innerHTML = `
-    <div class="top"><h1>用户管理</h1><button class="refresh" onclick="loadUsers()">刷新</button></div>
-    <div class="meta">
-      <span>注册用户：<b id="uc">0</b></span>
-      <span>当前在线：<b id="oc" style="color:var(--green);">0</b></span>
-    </div>
-    <div class="list" id="list"><div style="padding:14px;color:var(--text-secondary);">加载中…</div></div>`;
-  let users = [];
+// ===== 操作 =====
+async function setAdmin(lname, v) {
+  if (!hasAdmin) { toast('数据库未升级，无法设置管理员（见页面顶部提示）'); return; }
+  if (!confirm(v ? '确认将「' + lname + '」设为管理员？' : '确认取消「' + lname + '」的管理员身份？')) return;
   try {
-    const rows = await supabaseRest('GET', 'users', 'select=name,lname&order=created_at.desc&limit=500');
-    users = (rows || []).map(u => ({ name: u.name, lname: u.lname }));
-  } catch(e) {}
-  const seen = {};
-  const list = users.filter(u => {
-    const key = (u.lname || u.name || '').toLowerCase();
-    if (seen[key]) return false;
-    seen[key] = true;
-    return true;
-  });
-  document.getElementById('uc').textContent = list.length;
+    await supabaseRest('PATCH', 'users', 'lname=eq.' + encodeURIComponent(lname), { is_admin: v });
+    toast(v ? '已设为管理员' : '已取消管理员');
+  } catch(e) { toast('操作失败：' + e.message); }
+  loadAll();
+}
+async function setBan(lname, v) {
+  if (!hasBanned) { toast('数据库未升级，无法封禁（见页面顶部提示）'); return; }
+  if (!confirm(v ? '确认封禁「' + lname + '」？封禁后该账号无法登录。' : '确认解封「' + lname + '」？')) return;
   try {
-    const cutoff = new Date(Date.now() - 60000).toISOString();
-    const onrows = await supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(cutoff) + '&select=user_name');
-    document.getElementById('oc').textContent = new Set((onrows || []).map(r => r.user_name)).size;
-  } catch(e) { document.getElementById('oc').textContent = '?'; }
-  document.getElementById('list').innerHTML = list.map((u,i) =>
-    `<div class="row">
-      <span>${i+1}. ${u.name}</span>
-      ${ADMIN_USERS.includes(u.lname) ? '<span class="tag-admin">管理员</span>' : '<span style="color:var(--text-secondary);font-size:12px;">用户</span>'}
-    </div>`
-  ).join('') || '<div style="padding:14px;color:var(--text-secondary);">暂无注册用户</div>';
+    await supabaseRest('PATCH', 'users', 'lname=eq.' + encodeURIComponent(lname), { banned: v });
+    toast(v ? '已封禁' : '已解封');
+  } catch(e) { toast('操作失败：' + e.message); }
+  loadAll();
+}
+async function delUser(name, lname) {
+  if (!confirm('确认删除用户「' + name + '」？\n该用户的所有帖子、评论也会一并删除，且无法恢复！')) return;
+  try {
+    const qName = encodeURIComponent(name);
+    if (lname) await supabaseRest('DELETE', 'users', 'lname=eq.' + encodeURIComponent(lname));
+    await supabaseRest('DELETE', 'posts', 'user_name=eq.' + qName);
+    await supabaseRest('DELETE', 'comments', 'user_name=eq.' + qName);
+    // 在线记录一并清除
+    try { await supabaseRest('DELETE', 'online_users', 'user_name=eq.' + qName); } catch(e) {}
+    toast('用户已删除');
+  } catch(e) { toast('删除失败：' + e.message); }
+  loadAll();
+}
+async function delPost(id, title) {
+  if (!confirm('确认删除帖子「' + title + '」？\n该帖下的评论也会一并删除。')) return;
+  try {
+    await supabaseRest('DELETE', 'posts', 'id=eq.' + encodeURIComponent(String(id)));
+    await supabaseRest('DELETE', 'comments', 'post_id=eq.' + encodeURIComponent(String(id)));
+    toast('帖子已删除');
+  } catch(e) { toast('删除失败：' + e.message); }
+  loadAll();
+}
+async function delComment(id) {
+  if (!confirm('确认删除这条评论？')) return;
+  try {
+    await supabaseRest('DELETE', 'comments', 'id=eq.' + encodeURIComponent(String(id)));
+    toast('评论已删除');
+  } catch(e) { toast('删除失败：' + e.message); }
+  loadAll();
 }
 
 (function(){
   const u = getCurrentUser();
-  if (!isAdmin(u)) { renderDeny(); return; }
-  loadUsers();
+  if (!isAdmin(u)) { renderDeny(document.getElementById('app')); return; }
+  loadAll();
 })();
 </script>
 </body>
