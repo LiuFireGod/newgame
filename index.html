@@ -545,6 +545,25 @@
     cursor: not-allowed;
   }
 
+  /* 排行榜标签 */
+  .rank-tab {
+    padding: 7px 16px;
+    border-radius: 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .rank-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+  .rank-tab.active {
+    background: rgba(108,92,231,.15);
+    border-color: var(--accent);
+    color: var(--accent-light);
+    font-weight: 600;
+  }
+
   /* ===== 个人中心弹窗 ===== */
   .profile-avatar {
     width: 64px; height: 64px;
@@ -667,10 +686,13 @@
     <!-- 山选择标签 -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <div class="ig-mountain-tabs" id="igMountainTabs" style="margin-bottom:0;"></div>
-      <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="document.getElementById('adminPanel').classList.add('show')">后台</button>
+      <div style="display:flex;gap:8px;">
+        <button class="ig-shop-btn" style="background:#00b894;" onclick="openRank()">🏆 排行榜</button>
+        <button class="ig-shop-btn" style="background:#6c5ce7;display:none;" onclick="document.getElementById('adminPanel').classList.add('show')">后台</button>
+      </div>
     </div>
     <div class="ig-win" id="igWin">这座山已挖平！</div>
-    <div class="ig-stats" style="grid-template-columns:1fr 1fr 1fr;">
+    <div class="ig-stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));">
       <div class="ig-stat">
         <div class="ig-stat-label">已挖土方</div>
         <div class="ig-stat-value" id="igSoil">0</div>
@@ -682,6 +704,14 @@
       <div class="ig-stat">
         <div class="ig-stat-label">每秒产出</div>
         <div class="ig-stat-value" id="igCps" style="color:var(--green);font-size:20px;">0/秒</div>
+      </div>
+      <div class="ig-stat">
+        <div class="ig-stat-label">境界</div>
+        <div class="ig-stat-value" id="igRealmStat" style="color:#a29bfe;font-size:18px;">炼气</div>
+      </div>
+      <div class="ig-stat">
+        <div class="ig-stat-label">人口</div>
+        <div class="ig-stat-value" id="igPopStat" style="color:#fd79a8;font-size:18px;">1口</div>
       </div>
     </div>
 
@@ -715,6 +745,9 @@
     </div>
     <div class="ig-shop-title" style="color:#e74c3c;">Boss山</div>
     <div id="igBoss"></div>
+
+    <div class="ig-shop-title" style="color:#a29bfe;">修仙 · <span id="igRealmName">炼气</span> · 灵石 <span id="igStones" style="color:#74b9ff;">0</span></div>
+    <div id="igSect"></div>
 
     <div class="ig-shop-title">招募子弟</div>
     <div id="igGens"></div>
@@ -818,14 +851,25 @@
       <button class="ig-shop-btn" style="background:#f1c40f;color:#333;" onclick="admMaxProgress()">当前山直接挖满</button>
       <button class="ig-shop-btn" style="background:#e74c3c;" onclick="admReset()">清空游戏存档</button>
     </div>
+  </div>
+</div>
 
-    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
-      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">用户管理</div>
-      <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;">
-        <span>注册用户：<b id="admUserCount">0</b></span>
-        <span>当前在线：<b id="admOnlineCount" style="color:var(--green);">0</b></span>
-      </div>
-      <div id="admUserList" style="max-height:160px;overflow-y:auto;font-size:13px;"></div>
+<!-- ===== 排行榜弹窗 ===== -->
+<div class="modal-overlay" id="rankModal">
+  <div class="modal" style="max-width:540px;max-height:84vh;overflow-y:auto;">
+    <button class="close-modal" onclick="document.getElementById('rankModal').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;">🏆 全服排行榜</h2>
+    <div class="sub" style="text-align:left;margin-bottom:14px;">与所有玩家比拼挖山进度</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;" id="rankTabs">
+      <span class="rank-tab active" data-rank="soil" onclick="rankSwitch('soil')">挖山榜</span>
+      <span class="rank-tab" data-rank="coins" onclick="rankSwitch('coins')">金币榜</span>
+      <span class="rank-tab" data-rank="progress" onclick="rankSwitch('progress')">进度榜</span>
+      <span class="rank-tab" data-rank="boss" onclick="rankSwitch('boss')">Boss榜</span>
+    </div>
+    <div id="rankBody"><div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div></div>
+    <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:var(--text-secondary);">仅统计云端已同步存档的玩家</span>
+      <button class="ig-shop-btn" style="background:#6c5ce7;" onclick="rankLoad()">刷新</button>
     </div>
   </div>
 </div>
@@ -1495,8 +1539,37 @@ const IG_MOUNTAINS = [
   { id: 'third', name: '天柱山', total: 2000000, unlockAt: 'wangwu', unlockDesc: '挖完王屋山解锁' },
   { id: 'kunlun', name: '昆仑山', total: 10000000, unlockAt: 'third', unlockDesc: '挖完天柱山解锁' },
   { id: 'buzhou', name: '不周山', total: 50000000, unlockAt: 'kunlun', unlockDesc: '挖完昆仑山解锁' },
+  { id: 'huoyan', name: '火焰山', total: 200000000, unlockAt: 'buzhou', unlockDesc: '挖完不周山解锁' },
+  { id: 'penglai', name: '蓬莱山', total: 1000000000, unlockAt: 'huoyan', unlockDesc: '挖完火焰山解锁' },
+  { id: 'taishan', name: '泰山', total: 5000000000, unlockAt: 'penglai', unlockDesc: '挖完蓬莱山解锁' },
+  { id: 'huashan', name: '华山', total: 20000000000, unlockAt: 'taishan', unlockDesc: '挖完泰山解锁' },
+  { id: 'emei', name: '峨眉山', total: 100000000000, unlockAt: 'huashan', unlockDesc: '挖完华山解锁' },
+  { id: 'xumi', name: '须弥山', total: 500000000000, unlockAt: 'emei', unlockDesc: '挖完峨眉山解锁' },
+  { id: 'jiuchong', name: '九重天', total: 2500000000000, unlockAt: 'xumi', unlockDesc: '挖完须弥山解锁' },
+  { id: 'buxian', name: '不灭仙山', total: 10000000000000, unlockAt: 'jiuchong', unlockDesc: '挖完九重天解锁（此山挖不尽，量力而行）' },
 ];
 let igCurrentMountain = 'taihang'; // 当前挖的山
+// ===== 修仙设定 =====
+// 境界：修为达到要求后突破，每层全局产出+50%，并提升人口上限
+const IG_REALMS = [
+  { name:'炼气', popCap: 50 },
+  { name:'筑基', popCap: 200 },
+  { name:'金丹', popCap: 800 },
+  { name:'元婴', popCap: 3000 },
+  { name:'化神', popCap: 10000 },
+  { name:'合体', popCap: 50000 },
+  { name:'大乘', popCap: 200000 },
+  { name:'渡劫', popCap: 1000000 },
+  { name:'飞升', popCap: 0 }, // 0 = 无上限
+];
+const IG_REALM_REQ = [0, 100000, 500000, 2500000, 10000000, 50000000, 250000000, 1000000000, 5000000000]; // 各境界所需修为
+const IG_REALM_REWARD = [0, 10, 25, 60, 150, 400, 1000, 2500, 6000]; // 突破奖励灵石
+// 修仙商店（灵石购买）
+const IG_SECT_SHOP = [
+  { id:'pill', name:'聚灵丹', icon:'💊', cost:20, desc:'点击威力 x3，持续60秒', type:'buff' },
+  { id:'sutra', name:'太上感应篇', icon:'📜', cost:100, desc:'全局产出 +50%（可叠加）', type:'mult', value:1.5 },
+  { id:'bag', name:'乾坤袋', icon:'🧺', cost:300, desc:'离线收益效率提升到 100%', type:'offline' },
+];
 let igState = {
   soilBalance: 0,
   mountains: {},
@@ -1508,6 +1581,10 @@ let igState = {
   achievements: {}, // 已达成的成就
   autoClicker: 0, // 自动点击器数量
   totalClicks: 0, // 总点击次数
+  // 修仙
+  realm: 0, cultivation: 0, spiritStones: 0, techniques: {},
+  // 人口（全村人口规模，每10口全局产出+10%）
+  population: 1,
   // Boss山
   bossLevel: 0, bossKills: 0, bossBonus: 0,
   bossState: 'idle', bossHp: 0, bossMax: 0, bossUntil: 0, bossCooldown: 0,
@@ -1544,7 +1621,8 @@ function igClaimDaily(id) {
   if (!q || ds.done[id] || !q.check()) return;
   ds.done[id] = true;
   igState.coins = (igState.coins||0) + q.reward;
-  showToast('每日任务完成：' + q.name + ' +' + q.reward + '金币');
+  igState.spiritStones = (igState.spiritStones||0) + 2; // 完成每日任务得2灵石
+  showToast('每日任务完成：' + q.name + ' +' + q.reward + '金币、2灵石');
   igRender(); igSave();
 }
 
@@ -1613,6 +1691,12 @@ function igCps() {
     if (gu[item.id] && item.type === 'allMult') c *= item.value;
   });
   c *= 1 + (igState.bossBonus || 0); // Boss永久产出加成
+  c *= 1 + (igState.realm || 0) * 0.5; // 修仙境界加成：每层+50%
+  c *= 1 + 0.1 * Math.floor((igState.population || 1) / 10); // 人口加成：每10口+10%
+  const tc = igState.techniques || {};
+  IG_SECT_SHOP.forEach(it => {
+    if (tc[it.id] && it.type === 'mult') c *= Math.pow(it.value, tc[it.id]); // 功法叠加
+  });
   return c;
 }
 function igClickDmg() {
@@ -1631,18 +1715,28 @@ function igFmt(n) {
 
 let igBuff = { mult: 1, until: 0 }; // 临时buff
 
-// ===== Boss 山 =====
-const IG_BOSS = {
-  baseHp: 50000,
-  hpGrowth: 2.2,
-  timeMs: 45000,
-  rewardBase: 500,
-  rewardGrowth: 1.6,
-  bonusPerKill: 0.1,
-  cooldownMs: 30000,
-};
-function bossMaxHp() { return Math.floor(IG_BOSS.baseHp * Math.pow(IG_BOSS.hpGrowth, igState.bossLevel || 0)); }
-function bossReward() { return Math.floor(IG_BOSS.rewardBase * Math.pow(IG_BOSS.rewardGrowth, igState.bossLevel || 0)); }
+// ===== Boss 山（多Boss，按击败次数进阶） =====
+const IG_BOSSES = [
+  { name:'山魈', icon:'🦍', baseHp:50000, reward:500 },
+  { name:'巨灵神', icon:'🗿', baseHp:150000, reward:900 },
+  { name:'饕餮', icon:'🐲', baseHp:500000, reward:1600 },
+  { name:'刑天', icon:'⚔️', baseHp:1800000, reward:3000 },
+  { name:'共工', icon:'🌊', baseHp:6000000, reward:5500 },
+  { name:'旱魃', icon:'🔥', baseHp:22000000, reward:10000 },
+  { name:'蛟龙', icon:'🐉', baseHp:80000000, reward:18000 },
+  { name:'相柳', icon:'🐍', baseHp:300000000, reward:33000 },
+  { name:'穷奇', icon:'🐯', baseHp:1200000000, reward:60000 },
+  { name:'烛龙', icon:'🧿', baseHp:5000000000, reward:110000 },
+  { name:'混沌', icon:'🌑', baseHp:20000000000, reward:200000 },
+  { name:'愚公心魔', icon:'👹', baseHp:100000000000, reward:400000 },
+];
+const IG_BOSS_CFG = { hpGrowth: 2.2, timeMs: 45000, rewardGrowth: 1.6, bonusPerKill: 0.1, cooldownMs: 30000 };
+function igBossCfg() {
+  const lv = igState.bossLevel || 0;
+  return IG_BOSSES[Math.min(lv, IG_BOSSES.length - 1)];
+}
+function bossMaxHp() { const b = igBossCfg(); return Math.floor(b.baseHp * Math.pow(IG_BOSS_CFG.hpGrowth, igState.bossLevel || 0)); }
+function bossReward() { const b = igBossCfg(); return Math.floor(b.reward * Math.pow(IG_BOSS_CFG.rewardGrowth, igState.bossLevel || 0)); }
 function igSummonBoss() {
   const now = Date.now();
   if (igState.bossState === 'fighting') return;
@@ -1650,8 +1744,9 @@ function igSummonBoss() {
   igState.bossState = 'fighting';
   igState.bossMax = bossMaxHp();
   igState.bossHp = igState.bossMax;
-  igState.bossUntil = now + IG_BOSS.timeMs;
-  showToast('⚔️ Boss山出现了！45秒内击败它，赢取永久加成！');
+  igState.bossUntil = now + IG_BOSS_CFG.timeMs;
+  const b = igBossCfg();
+  showToast('⚔️ ' + b.icon + ' ' + b.name + '出现了！45秒内击败它，赢取永久加成！');
   igRender(); igSave();
 }
 function bossDamage(dmg) {
@@ -1662,11 +1757,14 @@ function bossDamage(dmg) {
     const reward = bossReward();
     igState.coins = (igState.coins || 0) + reward;
     igState.bossKills = (igState.bossKills || 0) + 1;
-    igState.bossBonus = (igState.bossBonus || 0) + IG_BOSS.bonusPerKill;
+    igState.bossBonus = (igState.bossBonus || 0) + IG_BOSS_CFG.bonusPerKill;
     igState.bossLevel = (igState.bossLevel || 0) + 1;
+    igState.spiritStones = (igState.spiritStones || 0) + 5; // 降妖得灵石
+    igState.cultivation = (igState.cultivation || 0) + bossReward() * 0.1;
     igState.bossState = 'idle';
-    igState.bossCooldown = Date.now() + IG_BOSS.cooldownMs;
-    showToast('🏆 击败Boss山！+' + reward + '金币，永久产出+10%');
+    igState.bossCooldown = Date.now() + IG_BOSS_CFG.cooldownMs;
+    const b = igBossCfg();
+    showToast('🏆 击败' + b.icon + ' ' + b.name + '！+' + reward + '金币、5灵石，永久产出+10%');
     igRender(); igSave();
   }
 }
@@ -1678,6 +1776,7 @@ function igDoDig() {
   igState.soilBalance += dmg;
   igMountainData().progress += dmg;
   igState.totalClicks = (igState.totalClicks || 0) + 1;
+  igState.cultivation = (igState.cultivation || 0) + dmg * 0.05; // 挖山悟道：点击修为+5%
   bossDamage(dmg); // 点击同时攻击Boss山
   // 每日任务计数
   const ds = igDailyState();
@@ -1714,10 +1813,56 @@ function igSkill() {
   const gain = c * 30; // 30秒产出
   igState.soilBalance += gain;
   igMountainData().progress += gain;
+  igState.cultivation = (igState.cultivation || 0) + gain * 0.05; // 突击也涨修为
   igSkillReadyAt = now + 60000; // 60秒CD
   showToast('全村突击！瞬间挖了 ' + igFmt(gain) + ' 土方');
   igRender();
   igSave();
+}
+
+// ===== 修仙：境界突破 =====
+function igRealm() { return Math.min(igState.realm || 0, IG_REALMS.length - 1); }
+function igRealmReq() { return (igState.realm||0) + 1 < IG_REALM_REQ.length ? IG_REALM_REQ[(igState.realm||0)+1] : Infinity; }
+function igBreakRealm() {
+  const next = (igState.realm || 0) + 1;
+  if (next >= IG_REALMS.length) { showToast('已至飞升，仙道圆满！'); return; }
+  if ((igState.cultivation || 0) < IG_REALM_REQ[next]) { showToast('修为不足，尚需 ' + igFmt(IG_REALM_REQ[next] - (igState.cultivation||0)) + ' 修为'); return; }
+  igState.realm = next;
+  igState.spiritStones = (igState.spiritStones || 0) + IG_REALM_REWARD[next];
+  showToast('⚡ 天劫渡过！突破至「' + IG_REALMS[next].name + '」境界，获得 ' + IG_REALM_REWARD[next] + ' 灵石，全局产出+50%');
+  igRender(); igSave();
+}
+// ===== 人口：招徕村民 =====
+function igPopCap() { return IG_REALMS[igRealm()].popCap; }
+function igPopCost() { return Math.floor(150 * Math.pow(1.5, (igState.population || 1) - 1)); }
+function igRecruitPop() {
+  const cost = igPopCost();
+  if ((igState.coins||0) < cost) { showToast('金币不足，招徕村民需要 ' + igFmt(cost) + ' 金币'); return; }
+  const cap = igPopCap();
+  if (cap > 0 && (igState.population||1) >= cap) { showToast('人满为患！提升境界可容纳更多人口'); return; }
+  igState.coins -= cost;
+  igState.population = (igState.population || 1) + 1;
+  showToast('👨‍🌾 新村民迁入！全村人口 ' + igState.population + ' 口');
+  igRender(); igSave();
+}
+// ===== 修仙商店（灵石购买） =====
+function igBuySect(id) {
+  const it = IG_SECT_SHOP.find(x=>x.id===id);
+  if (!it) return;
+  if ((igState.spiritStones||0) < it.cost) { showToast('灵石不足，还需 ' + (it.cost - (igState.spiritStones||0)) + ' 灵石'); return; }
+  igState.spiritStones -= it.cost;
+  const tc = igState.techniques = igState.techniques || {};
+  if (it.type === 'buff') {
+    igBuff = { mult: 3, until: Date.now() + 60000 };
+    showToast('💊 服下聚灵丹！60秒内点击威力 x3');
+  } else if (it.type === 'mult') {
+    tc[id] = (tc[id] || 0) + 1;
+    showToast('📜 参悟「' + it.name + '」，全局产出 +50%');
+  } else if (it.type === 'offline') {
+    tc[id] = 1;
+    showToast('🧺 得「乾坤袋」，离线收益效率提升到 100%');
+  }
+  igRender(); igSave();
 }
 
 function igBuyGen(id) {
@@ -1780,6 +1925,13 @@ function igRender() {
   const cps = igCps();
   document.getElementById('igCps').textContent = igFmt(cps) + '/秒';
   document.getElementById('igClickPow').textContent = '+' + igClickDmg();
+  // 修仙统计
+  const realm = igRealm();
+  document.getElementById('igRealmStat').textContent = IG_REALMS[realm].name;
+  document.getElementById('igRealmName').textContent = IG_REALMS[realm].name;
+  document.getElementById('igStones').textContent = igFmt(igState.spiritStones || 0);
+  document.getElementById('igPopStat').textContent = (igState.population || 1) + '口';
+  igRenderSect();
   // 技能CD
   const skillBtn = document.getElementById('igSkillBtn');
   const skillCd = document.getElementById('igSkillCd');
@@ -1911,6 +2063,7 @@ function igRender() {
   const elBoss = document.getElementById('igBoss');
   if (elBoss) {
     const bLv = igState.bossLevel || 0, bKills = igState.bossKills || 0, bBonus = igState.bossBonus || 0;
+    const b = igBossCfg();
     const now = Date.now();
     let html = '';
     if (igState.bossState === 'fighting') {
@@ -1919,7 +2072,7 @@ function igRender() {
       html = `<div class="ig-shop-item" style="border:1px solid #e74c3c;">
         <div class="ig-shop-info" style="width:100%;">
           <div style="display:flex;justify-content:space-between;font-size:13px;">
-            <span>Boss山 Lv.${bLv+1}（击败可获得 ${bossReward()} 金币 + 永久+10%产出）</span>
+            <span>${b.icon} ${b.name} Lv.${bLv+1}（击败可获得 ${bossReward()} 金币 + 永久+10%产出）</span>
             <span style="color:#e74c3c;">⏱ ${remain}秒</span>
           </div>
           <div style="height:10px;background:#333;border-radius:5px;margin:8px 0;overflow:hidden;">
@@ -1931,17 +2084,83 @@ function igRender() {
     } else {
       const cd = igState.bossCooldown || 0;
       const ready = now >= cd;
+      const nextB = IG_BOSSES[Math.min(bLv + 1, IG_BOSSES.length - 1)];
       html = `<div class="ig-shop-item">
-        <div class="ig-shop-icon">👹</div>
+        <div class="ig-shop-icon">${b.icon}</div>
         <div class="ig-shop-info">
-          <div class="ig-shop-name">Boss山 Lv.${bLv+1}</div>
-          <div class="ig-shop-desc">击败得 ${bossReward()} 金币 · 永久产出+10% · 已击败${bKills}次 · 当前加成+${Math.round(bBonus*100)}%</div>
+          <div class="ig-shop-name">${b.name} Lv.${bLv+1}</div>
+          <div class="ig-shop-desc">击败得 ${bossReward()} 金币 · 永久产出+10% · 已击败${bKills}次 · 当前加成+${Math.round(bBonus*100)}% · 下一战：${nextB.icon}${nextB.name}</div>
         </div>
         <button class="ig-shop-btn" style="background:#e74c3c;color:#fff;" ${ready?'':'disabled'} onclick="igSummonBoss()">${ready?'挑战':'冷却中'}</button>
       </div>`;
     }
     elBoss.innerHTML = html;
   }
+}
+
+// ===== 修仙面板渲染 =====
+function igRenderSect() {
+  const el = document.getElementById('igSect');
+  if (!el) return;
+  const realm = igRealm();
+  const cur = igState.cultivation || 0;
+  const req = igRealmReq();
+  const tc = igState.techniques || {};
+  const canBreak = isFinite(req) && cur >= req;
+  const popCap = igPopCap();
+  const pop = igState.population || 1;
+  const popFull = popCap > 0 && pop >= popCap;
+  const popCost = igPopCost();
+  const stones = igState.spiritStones || 0;
+  const realmPct = isFinite(req) ? Math.min(100, cur / req * 100) : 100;
+
+  const sectHtml = IG_SECT_SHOP.map(it => {
+    const owned = it.type === 'offline' && tc[it.id] ? true : (it.type === 'mult' ? tc[it.id] || 0 : false);
+    const label = it.type === 'mult' && owned ? `已参悟 x${owned+1}` : (owned ? '已拥有' : `${it.cost} 灵石`);
+    if (owned) {
+      return `<div class="ig-shop-item">
+        <div class="ig-shop-icon">${it.icon}</div>
+        <div class="ig-shop-info">
+          <div class="ig-shop-name">${it.name} <span style="color:#74b9ff">${it.type==='mult'?'x'+(owned+1):'已拥有'}</span></div>
+          <div class="ig-shop-desc">${it.desc}</div>
+        </div>
+      </div>`;
+    }
+    return `<div class="ig-shop-item">
+      <div class="ig-shop-icon">${it.icon}</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">${it.name}</div>
+        <div class="ig-shop-desc">${it.desc}</div>
+      </div>
+      <button class="ig-shop-btn" style="background:#74b9ff;color:#333;" ${stones>=it.cost?'':'disabled'} onclick="igBuySect('${it.id}')">${label}</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="ig-shop-item" style="border:1px solid #a29bfe;">
+      <div class="ig-shop-icon">🧘</div>
+      <div class="ig-shop-info" style="width:100%;">
+        <div class="ig-shop-name">${IG_REALMS[realm].name}${realm>0?' · 全局产出 +'+Math.round(realm*50)+'%':''}</div>
+        <div style="height:8px;background:#333;border-radius:5px;margin:6px 0;overflow:hidden;">
+          <div style="height:100%;width:${realmPct}%;background:linear-gradient(90deg,#a29bfe,#74b9ff);"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);">
+          ${isFinite(req)
+            ? `修为 ${igFmt(cur)} / ${igFmt(req)}（产出2%化为修为）`
+            : '修为 ' + igFmt(cur) + ' · 已至飞升，仙道圆满'}
+        </div>
+      </div>
+      <button class="ig-shop-btn" style="background:#a29bfe;color:#333;" ${canBreak?'':'disabled'} onclick="igBreakRealm()">${canBreak?'⚡ 突破':'修炼中'}</button>
+    </div>
+    <div class="ig-shop-item">
+      <div class="ig-shop-icon">🏘️</div>
+      <div class="ig-shop-info">
+        <div class="ig-shop-name">全村人口 ${pop} 口</div>
+        <div class="ig-shop-desc">每10口全局产出+10% · ${popCap>0?'上限 '+popCap+' 口（随境界提升）':'人口无上限'}${pop>=10?' · 当前人口加成 +'+Math.floor(pop/10)*10+'%':''}</div>
+      </div>
+      <button class="ig-shop-btn" style="background:#fd79a8;color:#fff;" ${(!popFull && (igState.coins||0)>=popCost)?'':'disabled'} onclick="igRecruitPop()">招徕 ${igFmt(popCost)}</button>
+    </div>
+    ${sectHtml}`;
 }
 
 function igBuyGold(id) {
@@ -1965,6 +2184,85 @@ function igBuyGold(id) {
 function igSaveKey() {
   return 'ig_save_' + (currentUser ? (currentUser.lname || currentUser.name.toLowerCase()) : 'guest');
 }
+// ===== 全服排行榜（读取云端 game_saves + 本地兜底） =====
+let rankData = [];
+let curRankTab = 'soil';
+function rankEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function openRank() {
+  document.getElementById('rankModal').classList.add('show');
+  rankLoad();
+}
+async function rankLoad() {
+  const body = document.getElementById('rankBody');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
+  // 云端全服存档
+  let rows = [];
+  try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); } catch(e) {}
+  // 云端为空则回退本地所有账号存档
+  if (!rows || !rows.length) {
+    rows = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('ig_save_') === 0) {
+          const s = JSON.parse(localStorage.getItem(k));
+          if (s) rows.push({ user_name: k.slice(9), save_data: s });
+        }
+      }
+    } catch(e) {}
+  }
+  const meName = currentUser ? currentUser.name : null;
+  rankData = (rows || []).map(r => {
+    let sd = r.save_data;
+    if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
+    sd = sd || {};
+    let progress = 0;
+    const mts = sd.mountains || {};
+    IG_MOUNTAINS.forEach(m => { const md = mts[m.id]; if (md && md.progress >= m.total) progress++; });
+    return {
+      name: r.user_name || '未知',
+      soil: Math.floor(sd.soilBalance || 0),
+      coins: Math.floor(sd.coins || 0),
+      progress: progress,
+      boss: Math.floor(sd.bossKills || 0),
+      me: meName && r.user_name === meName
+    };
+  }).filter(x => x.soil > 0 || x.coins > 0 || x.progress > 0 || x.boss > 0);
+  rankRender(curRankTab);
+}
+function rankSwitch(t) {
+  curRankTab = t;
+  document.querySelectorAll('#rankTabs .rank-tab').forEach(el => el.classList.toggle('active', el.getAttribute('data-rank') === t));
+  rankRender(t);
+}
+function rankRender(t) {
+  const body = document.getElementById('rankBody');
+  if (!body) return;
+  const key = t === 'coins' ? 'coins' : t === 'progress' ? 'progress' : t === 'boss' ? 'boss' : 'soil';
+  const label = t === 'coins' ? '金币' : t === 'progress' ? '挖完山数' : t === 'boss' ? 'Boss击杀' : '已挖土方';
+  const sorted = rankData.slice().sort((a, b) => b[key] - a[key]);
+  if (!sorted.length) {
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-secondary);">暂无数据，快去挖山吧！</div>';
+    return;
+  }
+  const medal = ['🥇','🥈','🥉'];
+  const top = sorted.slice(0, 20);
+  body.innerHTML = top.map((x, i) => {
+    const isMe = x.me;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);${isMe ? 'background:rgba(108,92,231,.15);border-radius:10px;' : ''}">
+      <span style="width:36px;text-align:center;font-weight:800;color:${i < 3 ? '#f1c40f' : 'var(--text-secondary)'};">${medal[i] || (i + 1)}</span>
+      <span style="flex:1;font-weight:${isMe ? '700' : '400'};color:${isMe ? 'var(--accent-light)' : 'var(--text-primary)'};word-break:break-all;">${rankEsc(x.name)}${isMe ? '（我）' : ''}</span>
+      <span style="color:var(--text-secondary);font-size:12px;">${label}</span>
+      <span style="font-weight:700;color:var(--accent-light);white-space:nowrap;">${igFmt(x[key])}</span>
+    </div>`;
+  }).join('');
+}
+document.getElementById('rankModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+
 // 云端存档 upsert（按 user_name）
 async function cloudUpsertSave(userName, saveData) {
   try {
@@ -1982,7 +2280,10 @@ async function igLoad() {
   igState = {
     soilBalance: 0, mountains: {}, clickPower: 1,
     gens: {}, tools: {}, coins: 0, goldUp: {},
-    achievements: {}, autoClicker: 0, totalClicks: 0
+    achievements: {}, autoClicker: 0, totalClicks: 0,
+    realm: 0, cultivation: 0, spiritStones: 0, techniques: {}, population: 1,
+    bossLevel: 0, bossKills: 0, bossBonus: 0,
+    bossState: 'idle', bossHp: 0, bossMax: 0, bossUntil: 0, bossCooldown: 0
   };
   // 读取本地存档（兜底）
   try {
@@ -2007,11 +2308,13 @@ async function igLoad() {
     const offSec = Math.min((Date.now() - igState.lastTime)/1000, 8*3600);
     if (offSec > 60) {
       const c = igCps();
-      const gain = c * offSec * 0.5;
+      const offEff = (igState.techniques && igState.techniques.bag) ? 1 : 0.5; // 乾坤袋：离线收益50%→100%
+      const gain = c * offSec * offEff;
       if (gain > 10) {
         igState.soilBalance += gain;
         igMountainData().progress += gain;
-        setTimeout(()=>showToast('离线收益：挖了 ' + igFmt(gain) + ' 土方（离线效率50%）'), 500);
+        igState.cultivation = (igState.cultivation || 0) + c * offSec * offEff * 0.02; // 离线打坐修为
+        setTimeout(()=>showToast('离线收益：挖了 ' + igFmt(gain) + ' 土方（离线效率' + Math.round(offEff*100) + '%）'), 500);
       }
     }
   }
@@ -2027,6 +2330,7 @@ setInterval(()=>{
   if (c > 0) {
     igState.soilBalance += c/10 * buffMult;
     igMountainData().progress += c/10 * buffMult;
+    igState.cultivation = (igState.cultivation || 0) + c/10 * 0.02; // 打坐悟道：产出2%化为修为
   }
   // 自动点击器
   if (igState.autoClicker > 0) {
@@ -2038,8 +2342,9 @@ setInterval(()=>{
     bossDamage((c/10 + igClickDmg() * (igState.autoClicker||0) / 10) * buffMult);
     if (Date.now() > igState.bossUntil) {
       igState.bossState = 'idle';
-      igState.bossCooldown = Date.now() + IG_BOSS.cooldownMs;
-      showToast('Boss山逃走了！冷却后再来挑战');
+      igState.bossCooldown = Date.now() + IG_BOSS_CFG.cooldownMs;
+      const b = igBossCfg();
+      showToast(b.icon + ' ' + b.name + '逃走了！冷却后再来挑战');
     }
   }
   igUiTick++;
@@ -2049,10 +2354,12 @@ setInterval(()=>{
     igEventCooldown = 20 + Math.random()*40;
     if (document.getElementById('gameView').classList.contains('show') && Math.random() < 0.5) {
       const r = Math.random();
-      if (r < 0.35) { igBuff = { mult: 2, until: now + 20000 }; showToast('✨ 山神显灵！20秒内产出翻倍！'); }
-      else if (r < 0.6) { const gold = 50 + Math.floor(Math.random()*150); igState.coins = (igState.coins||0) + gold; showToast('🪙 金币雨！获得 +' + gold + ' 金币'); }
-      else if (r < 0.8) { const bonus = c * 15; igState.soilBalance += bonus; igMountainData().progress += bonus; showToast('🌋 山崩！瞬间获得 ' + igFmt(bonus) + ' 土方'); }
-      else { igBuff = { mult: 5, until: now + 10000 }; showToast('💥 暴击时刻！10秒内点击威力 x5'); }
+      if (r < 0.3) { igBuff = { mult: 2, until: now + 20000 }; showToast('✨ 山神显灵！20秒内产出翻倍！'); }
+      else if (r < 0.5) { const gold = 50 + Math.floor(Math.random()*150); igState.coins = (igState.coins||0) + gold; showToast('🪙 金币雨！获得 +' + gold + ' 金币'); }
+      else if (r < 0.68) { const bonus = c * 15; igState.soilBalance += bonus; igMountainData().progress += bonus; showToast('🌋 山崩！瞬间获得 ' + igFmt(bonus) + ' 土方'); }
+      else if (r < 0.82) { igBuff = { mult: 5, until: now + 10000 }; showToast('💥 暴击时刻！10秒内点击威力 x5'); }
+      else if (r < 0.92) { const add = 2 + Math.floor(Math.random()*4); igState.population = (igState.population||1) + add; showToast('🚶 流浪者来投！全村人口 +' + add + ' 口'); }
+      else { const loss = Math.max(1, Math.floor((igState.population||1) * 0.05)); igState.population = Math.max(1, (igState.population||1) - loss); showToast('🦠 疫病来袭！人口 -' + loss + ' 口'); }
     }
   }
   if (igUiTick % 5 === 0 && document.getElementById('gameView').classList.contains('show')) {
@@ -2130,45 +2437,12 @@ async function cloudOffline(userName) {
 // 定时心跳（登录就上报；没登录跳过）
 setInterval(() => { if (currentUser) cloudHeartbeat(currentUser.name); }, 20000);
 
-async function admLoadUsers() {
-  let users = [];
-  try {
-    const rows = await supabaseRest('GET', 'users', 'select=name,lname,is_admin&order=created_at.desc&limit=500');
-    users = (rows || []).map(u => ({ name: u.name, lname: u.lname, is_admin: u.is_admin }));
-  } catch(e) {}
-  if (!users.length) users = getUsers(); // 云端失败则回退本地
-  // 按lname去重，保留第一个
-  const seen = {};
-  const list = users.filter(u => {
-    const key = (u.lname || u.name || '').toLowerCase();
-    if (seen[key]) return false;
-    seen[key] = true;
-    return true;
-  });
-  document.getElementById('admUserCount').textContent = list.length;
-  // 在线数：云端 last_seen 在 60 秒内
-  try {
-    const cutoff = new Date(Date.now() - 60000).toISOString();
-    const onrows = await supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(cutoff) + '&select=user_name');
-    const online = new Set((onrows || []).map(r => r.user_name)).size;
-    document.getElementById('admOnlineCount').textContent = online;
-  } catch(e) { document.getElementById('admOnlineCount').textContent = '?'; }
-  document.getElementById('admUserList').innerHTML = list.map((u,i)=>{
-    const isA = isAdminUser(u);
-    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span>${i+1}. ${u.name}</span>
-      <span style="color:${isA?'var(--accent-light)':'var(--text-secondary)'};font-size:11px;">${isA?'管理员':''}</span>
-    </div>`;
-  }).join('') || '<div style="color:var(--text-secondary);">暂无注册用户</div>';
-}
-
-// 按 B 键呼出后台（需要管理员权限，无权限静默不响应）
+// 按 P 键呼出游戏后台（需要管理员权限，无权限静默不响应）
 document.addEventListener('keydown', (e)=>{
-  if (e.key === 'b' || e.key === 'B') {
+  if (e.key === 'p' || e.key === 'P') {
     if (document.activeElement.tagName === 'INPUT') return;
     if (!currentUser) return;
     if (!isAdminUser(currentUser)) return;
-    admLoadUsers();
     document.getElementById('adminPanel').classList.add('show');
   }
 });
