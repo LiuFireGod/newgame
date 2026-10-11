@@ -946,7 +946,9 @@ function openRank() {
   var list = m.querySelector('#tdRankList');
   var meL = 'td_' + tdLname();
   if (typeof supabaseRest === 'undefined') { list.innerHTML = '<div class="sub">云端不可用，无法加载排行榜</div>'; return; }
-  supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000')
+  // 服务端按总分(score 列)排序 + 限量拉取，不再全量扫描后前端排序（迁移前自动降级为前300条）
+  supabaseRest('GET', 'game_saves', 'select=user_name,save_data,score&order=score.desc&limit=300')
+    .catch(function () { return supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=300'); })
     .then(function (rows) {
       var recs = [];
       (rows || []).forEach(function (r) {

@@ -100,11 +100,13 @@ END $$;
 GRANT EXECUTE ON FUNCTION public.change_password(text,text,text,text) TO anon, authenticated;
 
 -- ============ C. 管理 RPC（密钥在函数内校验，SECRET 仅存在于管理后台页面） ============
--- SECRET: a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333
+-- ⚠️ 安全说明（2026-10-11）：历史明文密钥已从本文档移除。若在全新数据库执行本段，
+--    必须先将下方所有 __ADMIN_SECRET__ 替换为第 I 节生成的新密钥后再执行；切勿使用历史明文。
+-- SECRET: __ADMIN_SECRET__（执行前替换）
 CREATE OR REPLACE FUNCTION public.admin_set_admin(p_lname text, p_admin boolean, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   UPDATE public.users SET is_admin = p_admin WHERE lname = p_lname;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
   RETURN jsonb_build_object('ok', true);
@@ -112,7 +114,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.admin_set_banned(p_lname text, p_banned boolean, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   UPDATE public.users SET banned = p_banned WHERE lname = p_lname;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
   RETURN jsonb_build_object('ok', true);
@@ -120,7 +122,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.admin_delete_user(p_lname text, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   DELETE FROM public.users WHERE lname = p_lname;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
   RETURN jsonb_build_object('ok', true);
@@ -128,7 +130,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.admin_delete_user_content(p_lname text, p_name text, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   DELETE FROM public.posts WHERE lname = p_lname OR user_name = p_name;
   DELETE FROM public.comments WHERE lname = p_lname OR user_name = p_name;
   DELETE FROM public.online_users WHERE lname = p_lname OR user_name = p_name;
@@ -137,7 +139,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.admin_delete_post(p_id bigint, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   DELETE FROM public.comments WHERE post_id = p_id;
   DELETE FROM public.posts WHERE id = p_id;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
@@ -146,7 +148,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.admin_delete_comment(p_id bigint, p_secret text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF p_secret <> 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+  IF p_secret <> '__ADMIN_SECRET__' THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
   DELETE FROM public.comments WHERE id = p_id;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
   RETURN jsonb_build_object('ok', true);
@@ -372,3 +374,387 @@ GRANT EXECUTE ON FUNCTION public.get_login_salt(text) TO anon, authenticated;
 ```
 
 > 说明：旧账号（password_hash 为旧 djb2 格式）执行后返回 `pbkdf2:false`，登录时走 login_check 的 legacy 兼容分支并自动迁移；新账号（pbkdf2 格式）返回库中盐，前端重算后等值匹配。两种情况均可恢复登录。
+
+---
+
+## I. P0–P2 修复 SQL（2026-10-11，**待执行**）
+
+> 与新版前端代码配套。**必须先按顺序整段执行本节的 SQL，再使用新版页面**，否则点赞/在线/切换账号等功能会提示云端未升级。
+> 每段均幂等，可重复执行。
+
+### I.1 轮换管理密钥（历史明文已泄露，务必执行）
+
+**操作**：把下方 `'<在此填入新密钥>'` 替换为你自己生成的新密钥（推荐 32 位随机十六进制），然后执行本段。执行后旧密钥全部失效；管理后台打开时输入新密钥即可。切勿把新密钥写回本文件。
+
+```sql
+DO $$
+DECLARE s text := '<在此填入新密钥>';  -- ← 只改这一行
+BEGIN
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_set_admin(p_lname text, p_admin boolean, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      UPDATE public.users SET is_admin = p_admin WHERE lname = p_lname;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_set_banned(p_lname text, p_banned boolean, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      UPDATE public.users SET banned = p_banned WHERE lname = p_lname;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_delete_user(p_lname text, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      DELETE FROM public.users WHERE lname = p_lname;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_delete_user_content(p_lname text, p_name text, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      DELETE FROM public.posts WHERE lname = p_lname OR user_name = p_name;
+      DELETE FROM public.comments WHERE lname = p_lname OR user_name = p_name;
+      DELETE FROM public.online_users WHERE lname = p_lname OR user_name = p_name;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_delete_post(p_id bigint, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      DELETE FROM public.comments WHERE post_id = p_id;
+      DELETE FROM public.posts WHERE id = p_id;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_delete_comment(p_id bigint, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      DELETE FROM public.comments WHERE id = p_id;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_reset_password(p_lname text, p_new_hash text, p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      UPDATE public.users SET password_hash = p_new_hash, auth_tokens = '{}'::jsonb WHERE lname = p_lname;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+      DELETE FROM public.login_attempts WHERE lname = p_lname;
+      RETURN jsonb_build_object('ok', true);
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.admin_list_users(p_secret text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+    DECLARE rows jsonb;
+    BEGIN
+      IF p_secret <> %L THEN RAISE EXCEPTION '管理员密钥错误'; END IF;
+      SELECT coalesce(jsonb_agg(x), '[]'::jsonb) INTO rows FROM (
+        SELECT lname, name, uid, is_admin, banned, bio, invite_code, created_at,
+          CASE WHEN password_hash LIKE 'pbkdf2$%%' THEN 'pbkdf2'
+               WHEN password_hash IS NULL OR password_hash = '' THEN 'none'
+               ELSE 'legacy' END AS password_format,
+          left(split_part(coalesce(password_hash,''), '$', 4), 6) AS password_prefix
+        FROM public.users ORDER BY created_at DESC
+      ) x;
+      RETURN rows;
+    END $b$; $f$, s);
+  EXECUTE format($f$
+    GRANT EXECUTE ON FUNCTION public.admin_set_admin(text,boolean,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_set_banned(text,boolean,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_delete_user(text,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_delete_user_content(text,text,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_delete_post(bigint,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_delete_comment(bigint,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_reset_password(text,text,text) TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.admin_list_users(text) TO anon, authenticated;
+    $f$);
+END $$;
+```
+
+### I.2 本机会话令牌（登录/切换/点赞/在线改用令牌，不再依赖本地密码哈希）
+
+```sql
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_tokens jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- 登录：校验通过后签发新会话令牌，保留最近 20 个（多设备）；其余行为与 G 节一致
+CREATE OR REPLACE FUNCTION public.login_check(p_lname text, p_hash text, p_hash_legacy text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE; la public.login_attempts%ROWTYPE;
+        now_ms bigint := floor(extract(epoch from clock_timestamp())*1000);
+        new_token text;
+BEGIN
+  SELECT * INTO la FROM public.login_attempts WHERE lname = p_lname LIMIT 1;
+  IF la.locked_until > now_ms THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'locked', 'retry_after', (la.locked_until - now_ms + 999) / 1000);
+  END IF;
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN
+    INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 1, 0)
+    ON CONFLICT (lname) DO UPDATE SET fails = login_attempts.fails + 1;
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_user');
+  END IF;
+  IF u.password_hash IS DISTINCT FROM p_hash AND u.password_hash IS DISTINCT FROM p_hash_legacy THEN
+    IF la.fails + 1 >= 5 THEN
+      INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 0, now_ms + 15*60*1000)
+      ON CONFLICT (lname) DO UPDATE SET fails = 0, locked_until = now_ms + 15*60*1000;
+      RETURN jsonb_build_object('ok', false, 'reason', 'locked', 'retry_after', 900);
+    END IF;
+    INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 1, 0)
+    ON CONFLICT (lname) DO UPDATE SET fails = login_attempts.fails + 1;
+    RETURN jsonb_build_object('ok', false, 'reason', 'bad_pass');
+  END IF;
+  IF u.banned = true THEN RETURN jsonb_build_object('ok', false, 'reason', 'banned'); END IF;
+  IF u.password_hash = p_hash_legacy AND u.password_hash NOT LIKE 'pbkdf2$%' THEN
+    UPDATE public.users SET password_hash = p_hash WHERE lname = p_lname;
+  END IF;
+  DELETE FROM public.login_attempts WHERE lname = p_lname;
+  new_token := 't' || substr(md5(random()::text || clock_timestamp()::text), 1, 32);
+  u.auth_tokens := coalesce(u.auth_tokens, '{}'::jsonb) || jsonb_build_object(new_token, now_ms::text);
+  SELECT coalesce(jsonb_object_agg(k, v), '{}'::jsonb) INTO u.auth_tokens FROM (
+    SELECT k, v FROM jsonb_each_text(u.auth_tokens) ORDER BY v::bigint DESC LIMIT 20
+  ) t;
+  UPDATE public.users SET auth_tokens = u.auth_tokens WHERE lname = p_lname;
+  RETURN jsonb_build_object('ok', true, 'lname', u.lname, 'name', u.name, 'is_admin', u.is_admin,
+    'banned', u.banned, 'avatar_color', u.avatar_color, 'bio', u.bio, 'avatar_img', u.avatar_img,
+    'uid', u.uid, 'invite_code', u.invite_code, 'token', new_token,
+    'migrated', (u.password_hash = p_hash_legacy AND u.password_hash NOT LIKE 'pbkdf2$%'));
+END $$;
+
+-- 令牌校验：多账号一键切换用（本地不再保存密码哈希）
+CREATE OR REPLACE FUNCTION public.verify_token(p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE;
+BEGIN
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_user'); END IF;
+  IF u.auth_tokens IS NULL OR u.auth_tokens->>p_token IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_token'); END IF;
+  IF u.banned = true THEN RETURN jsonb_build_object('ok', false, 'reason', 'banned'); END IF;
+  RETURN jsonb_build_object('ok', true, 'lname', u.lname, 'name', u.name, 'is_admin', u.is_admin,
+    'banned', u.banned, 'avatar_color', u.avatar_color, 'bio', u.bio, 'avatar_img', u.avatar_img,
+    'uid', u.uid, 'invite_code', u.invite_code);
+END $$;
+GRANT EXECUTE ON FUNCTION public.verify_token(text,text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.login_check(text,text,text) TO anon, authenticated;
+
+-- 修改密码：校验旧密码后写入新哈希，并轮换全部会话令牌（其他设备下线），返回当前设备新令牌
+CREATE OR REPLACE FUNCTION public.change_password(p_lname text, p_old text, p_old_legacy text, p_new text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE new_token text := 't' || substr(md5(random()::text || clock_timestamp()::text), 1, 32);
+BEGIN
+  UPDATE public.users SET password_hash = p_new,
+    auth_tokens = jsonb_build_object(new_token, floor(extract(epoch from clock_timestamp())*1000)::text)
+  WHERE lname = p_lname AND (password_hash = p_old OR password_hash = p_old_legacy);
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false); END IF;
+  RETURN jsonb_build_object('ok', true, 'token', new_token);
+END $$;
+GRANT EXECUTE ON FUNCTION public.change_password(text,text,text,text) TO anon, authenticated;
+```
+
+### I.3 点赞防刷（每人每帖限一赞，计数只允许 RPC 修改）
+
+```sql
+CREATE TABLE IF NOT EXISTS public.post_likes (
+  post_id bigint NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+  lname text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (post_id, lname)
+);
+REVOKE ALL ON public.post_likes FROM anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.like_post(p_post_id bigint, p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE; new_count bigint;
+BEGIN
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_user'); END IF;
+  IF u.auth_tokens IS NULL OR u.auth_tokens->>p_token IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_perm'); END IF;
+  IF u.banned = true THEN RETURN jsonb_build_object('ok', false, 'reason', 'banned'); END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.post_likes WHERE post_id = p_post_id AND lname = p_lname) THEN
+    INSERT INTO public.post_likes (post_id, lname) VALUES (p_post_id, p_lname);
+    UPDATE public.posts SET likes = likes + 1 WHERE id = p_post_id;
+  END IF;
+  SELECT coalesce(likes, 0) INTO new_count FROM public.posts WHERE id = p_post_id;
+  RETURN jsonb_build_object('ok', true, 'likes', new_count);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.unlike_post(p_post_id bigint, p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE; new_count bigint;
+BEGIN
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_user'); END IF;
+  IF u.auth_tokens IS NULL OR u.auth_tokens->>p_token IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_perm'); END IF;
+  IF EXISTS (SELECT 1 FROM public.post_likes WHERE post_id = p_post_id AND lname = p_lname) THEN
+    DELETE FROM public.post_likes WHERE post_id = p_post_id AND lname = p_lname;
+    UPDATE public.posts SET likes = GREATEST(likes - 1, 0) WHERE id = p_post_id;
+  END IF;
+  SELECT coalesce(likes, 0) INTO new_count FROM public.posts WHERE id = p_post_id;
+  RETURN jsonb_build_object('ok', true, 'likes', new_count);
+END $$;
+GRANT EXECUTE ON FUNCTION public.like_post(bigint,text,text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.unlike_post(bigint,text,text) TO anon, authenticated;
+
+-- 关闭匿名直改 posts：内容改走 author_edit_post RPC，计数改走 like/unlike RPC（含防刷）
+REVOKE UPDATE ON public.posts FROM anon, authenticated;
+
+-- 新帖点赞数统一从 0 开始：禁止匿名直插伪造高赞帖（INSERT 也可带 likes 字段）
+CREATE OR REPLACE FUNCTION protect_posts_insert()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.likes := 0;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_protect_posts_insert ON posts;
+CREATE TRIGGER trg_protect_posts_insert BEFORE INSERT ON posts
+FOR EACH ROW EXECUTE FUNCTION protect_posts_insert();
+```
+
+### I.4 评论作者删除（评论凭证只存本机，云端不可读）
+
+```sql
+ALTER TABLE public.comments ADD COLUMN IF NOT EXISTS comment_token text;
+REVOKE SELECT (comment_token) ON public.comments FROM anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.author_delete_comment(p_id bigint, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.comments%ROWTYPE;
+BEGIN
+  SELECT * INTO r FROM public.comments WHERE id = p_id LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_comment'); END IF;
+  IF r.comment_token IS NULL OR r.comment_token <> p_token THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_perm'); END IF;
+  DELETE FROM public.comments WHERE id = p_id;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+GRANT EXECUTE ON FUNCTION public.author_delete_comment(bigint,text) TO anon, authenticated;
+```
+
+### I.5 在线表防护（删除他人在线记录需令牌，杜绝 IDOR）
+
+```sql
+ALTER TABLE public.online_users ADD COLUMN IF NOT EXISTS token text;
+REVOKE INSERT, UPDATE, DELETE ON public.online_users FROM anon, authenticated;
+GRANT SELECT ON public.online_users TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_online(p_user_name text, p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.online_users%ROWTYPE; new_token text;
+BEGIN
+  SELECT * INTO r FROM public.online_users WHERE lname = p_lname LIMIT 1;
+  IF FOUND THEN
+    new_token := COALESCE(r.token, 'o' || substr(md5(random()::text || clock_timestamp()::text), 1, 20));
+    UPDATE public.online_users SET last_seen = now(), token = new_token, user_name = p_user_name WHERE lname = p_lname;
+    RETURN jsonb_build_object('ok', true, 'token', new_token);
+  END IF;
+  new_token := 'o' || substr(md5(random()::text || clock_timestamp()::text), 1, 20);
+  INSERT INTO public.online_users(user_name, lname, last_seen, token) VALUES (p_user_name, p_lname, now(), new_token);
+  RETURN jsonb_build_object('ok', true, 'token', new_token);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.clear_online(p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  DELETE FROM public.online_users WHERE lname = p_lname AND token = p_token;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_perm'); END IF;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+GRANT EXECUTE ON FUNCTION public.set_online(text,text,text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.clear_online(text,text) TO anon, authenticated;
+```
+
+### I.6 图片存储桶（帖子图/头像改存 Storage，不再把 base64 写进数据库列）
+
+```sql
+INSERT INTO storage.buckets (id, name, public) VALUES
+  ('post-images', 'post-images', true),
+  ('avatars', 'avatars', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+DROP POLICY IF EXISTS "pub_insert_post_images" ON storage.objects;
+CREATE POLICY "pub_insert_post_images" ON storage.objects
+  FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'post-images');
+DROP POLICY IF EXISTS "pub_insert_avatars" ON storage.objects;
+CREATE POLICY "pub_insert_avatars" ON storage.objects
+  FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'avatars');
+```
+
+> 说明：存储桶为 public（图片可公开访问），匿名可上传但**不能覆盖已有文件**（INSERT 策略不授权 UPDATE）。上传路径按账号前缀隔离。
+
+### I.7 排行榜服务端排序（game_saves 增加 score 列，塔防总分由服务端维护）
+
+```sql
+ALTER TABLE public.game_saves ADD COLUMN IF NOT EXISTS score bigint NOT NULL DEFAULT 0;
+-- score 列需对前端可读（排行榜 select=user_name,save_data,score）
+GRANT SELECT (user_name, save_data, score) ON public.game_saves TO anon, authenticated;
+
+-- 回填历史塔防存档的总分（bestScore 数组求和；从未保存过的新档保存一次后自动更新）
+UPDATE public.game_saves
+SET score = coalesce((SELECT sum(v::bigint) FROM jsonb_array_elements_text(coalesce(save_data->'bestScore','[]'::jsonb)) v), 0)
+WHERE save_data->>'game' = 'td';
+
+CREATE OR REPLACE FUNCTION public.save_game(p_user_name text, p_token text, p_save_data jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.game_saves%ROWTYPE; new_token text; td_score bigint := 0;
+BEGIN
+  IF (p_save_data->>'game') = 'td' THEN
+    SELECT coalesce(sum(v::bigint), 0) INTO td_score
+    FROM jsonb_array_elements_text(coalesce(p_save_data->'bestScore', '[]'::jsonb)) v;
+  END IF;
+  SELECT * INTO r FROM public.game_saves WHERE user_name = p_user_name LIMIT 1;
+  IF FOUND THEN
+    IF r.save_token IS NULL OR r.save_token <> p_token THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'no_perm');
+    END IF;
+    UPDATE public.game_saves SET save_data = p_save_data, score = td_score WHERE user_name = p_user_name;
+    RETURN jsonb_build_object('ok', true, 'token', p_token);
+  END IF;
+  new_token := 's' || substr(md5(random()::text), 1, 20);
+  INSERT INTO public.game_saves(user_name, save_data, save_token, score) VALUES (p_user_name, p_save_data, new_token, td_score);
+  RETURN jsonb_build_object('ok', true, 'token', new_token);
+END $$;
+GRANT EXECUTE ON FUNCTION public.save_game(text,text,jsonb) TO anon, authenticated;
+```
+
+### I.8 防提权补充（封堵「匿名注册时直接带 is_admin=true 自建管理员」）
+
+> 此前触发器只拦截了 UPDATE 修改管理字段，INSERT 可绕过；本段补上 INSERT 拦截。
+
+```sql
+CREATE OR REPLACE FUNCTION protect_admin_fields_insert()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.is_admin := COALESCE(NEW.is_admin, false);
+  NEW.banned := COALESCE(NEW.banned, false);
+  IF NEW.is_admin OR NEW.banned THEN
+    IF current_user NOT IN ('postgres','supabase_admin','service_role') THEN
+      RAISE EXCEPTION '需要管理员密钥才能创建管理员/封禁状态账号';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_protect_admin_fields_insert ON users;
+CREATE TRIGGER trg_protect_admin_fields_insert BEFORE INSERT ON users
+FOR EACH ROW EXECUTE FUNCTION protect_admin_fields_insert();
+```
+
+### 执行清单（一次复制 I.1 → I.8 整段执行即可）
+
+1. 先把 I.1 里的 `<在此填入新密钥>` 替换为你在安全处生成的新密钥（32 位随机十六进制，不要写回本文件）。
+2. SQL Editor → New query → 粘贴整段（I.1 到 I.8）→ Run。
+3. 用新密钥打开管理后台验证；社区页重新登录一次（签发令牌），之后点赞/在线/切换账号恢复正常。

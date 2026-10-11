@@ -1075,8 +1075,39 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function safeImage(src) {
-  // 只允许本站上传的 base64 图片，杜绝外链注入 onerror 等属性
-  return (src && typeof src === 'string' && src.startsWith('data:image/')) ? src : '';
+  // 只允许本站上传的 base64 图片或本站存储桶的公开图片，杜绝外链注入 onerror 等属性
+  if (!src || typeof src !== 'string') return '';
+  if (src.startsWith('data:image/')) return src;
+  if (src.indexOf(SUPABASE_URL + '/storage/v1/object/public/') === 0) return src;
+  return '';
+}
+// ===== 图片上传到 Supabase Storage（不再把 base64 写进数据库列；失败返回 null） =====
+async function uploadImageToStorage(dataUrlOrBlob, bucket) {
+  try {
+    let blob, ext = 'png';
+    if (typeof dataUrlOrBlob === 'string' && dataUrlOrBlob.indexOf('data:') === 0) {
+      const m = /^data:([^;,]+)[^,]*,(.*)$/s.exec(dataUrlOrBlob);
+      if (!m) return null;
+      const mime = m[1];
+      ext = (mime.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+      const bin = atob(m[2]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      blob = new Blob([arr], { type: mime });
+    } else if (dataUrlOrBlob instanceof Blob) {
+      blob = dataUrlOrBlob;
+      ext = (blob.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+    } else { return null; }
+    const lname = (currentUser && (currentUser.lname || currentUser.name.toLowerCase())) || 'guest';
+    const key = lname + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + bucket + '/' + key, {
+      method: 'PUT',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob
+    });
+    if (!r.ok) return null;
+    return SUPABASE_URL + '/storage/v1/object/public/' + bucket + '/' + key;
+  } catch(e) { return null; }
 }
 
 // ===== 云端连通性检测（带8秒超时，全局状态供登录/管理员面板复用） =====
@@ -1166,6 +1197,27 @@ function setCurrentUser(u) {
   localStorage.setItem('gh_current', JSON.stringify(u));
 }
 
+// ===== 本机会话令牌：登录/注册后由服务端签发，仅存本机，用于点赞/在线等敏感操作（不再保存密码哈希） =====
+function getSavedToken(lname) {
+  try { const m = JSON.parse(localStorage.getItem('gh_tokens') || '{}'); return (lname && m[lname]) || ''; } catch { return ''; }
+}
+function setSavedToken(lname, t) {
+  try { const m = JSON.parse(localStorage.getItem('gh_tokens') || '{}'); if (t) m[lname] = t; else delete m[lname]; localStorage.setItem('gh_tokens', JSON.stringify(m)); } catch {}
+}
+function myToken() {
+  if (currentUser && currentUser.token) return currentUser.token;
+  return currentUser ? getSavedToken(currentUser.lname || (currentUser.name || '').toLowerCase()) : '';
+}
+// 一次性迁移：旧版本在 gh_users 里保存了密码哈希，新版改为只存服务端签发的会话令牌 → 清除历史哈希
+function migrateLocalCredentials() {
+  try {
+    const users = getUsers();
+    let changed = false;
+    users.forEach(x => { if (x && x.hash) { delete x.hash; changed = true; } });
+    if (changed) saveUsers(users);
+  } catch {}
+}
+
 function openAuth() {
   document.getElementById('authModal').classList.add('show');
   setTimeout(() => document.getElementById('authUser').focus(), 100);
@@ -1252,7 +1304,7 @@ async function cloudCreateUser(u) {
 function ensureLocalUser(u) {
   const users = getUsers();
   if (!users.find(x => x.lname === u.lname)) {
-    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null, uid: u.uid || '' });
+    users.push({ name: u.name, lname: u.lname, token: u.token || getSavedToken(u.lname), avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null, uid: u.uid || '' });
     saveUsers(users);
   }
 }
@@ -1295,7 +1347,10 @@ async function handleAuth() {
         else if (res && res.reason === 'banned') showToast('该账号已被封禁，请联系管理员');
         else showToast('密码错误，请重新输入');
       } else {
-        currentUser = { name: res.name, lname: res.lname || lname, hash: loginHash, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
+        const savedToken = res.token || '';
+        if (savedToken) setSavedToken(res.lname || lname, savedToken);
+        // 本机只保存服务端签发的会话令牌，不再持久化密码哈希
+        currentUser = { name: res.name, lname: res.lname || lname, token: savedToken, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1321,6 +1376,15 @@ async function handleAuth() {
           if (!ok) {
             showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
           } else {
+            // 注册成功后立即用同一密码哈希换取服务端会话令牌（本地不保存密码哈希）
+            let regToken = '';
+            try {
+              const tokRes = await supabaseRpc('login_check', { p_lname: lname, p_hash: hash, p_hash_legacy: legacyHash });
+              if (tokRes && tokRes.ok && tokRes.token) regToken = tokRes.token;
+            } catch(e) {}
+            delete newUser.hash;
+            newUser.token = regToken;
+            if (regToken) setSavedToken(lname, regToken);
             ensureLocalUser(newUser);
             currentUser = newUser;
             setCurrentUser(currentUser);
@@ -1396,7 +1460,7 @@ function openSwitch() {
 }
 function closeSwitch() { document.getElementById('switchModal').classList.remove('show'); }
 function renderSwitch() {
-  const users = getUsers().filter(x => x && x.lname && x.hash);
+  const users = getUsers().filter(x => x && x.lname);
   const list = document.getElementById('switchList');
   if (!list) return;
   if (!users.length) {
@@ -1418,26 +1482,25 @@ function renderSwitch() {
     </div>`;
   }).join('');
 }
-// 切换到指定账号（自动登入）：用本机保存的哈希走云端 login_check 校验，云端不可用禁止切换
+// 切换到指定账号（自动登入）：用本机保存的服务端会话令牌走 verify_token 校验，云端不可用禁止切换
 async function switchToAccount(lname) {
   const cur = currentUser && currentUser.lname === lname;
   if (cur) { closeSwitch(); return; }
   const users = getUsers();
   const rec = users.find(x => x.lname === lname);
-  if (!rec || !rec.hash) { showToast('该账号本地凭证缺失，请重新登录'); return; }
+  if (!rec || !rec.token) { showToast('该账号本地凭证缺失，请先用密码登录一次'); return; }
   const cloudOk = await cloudPing();
   if (!cloudOk) { showToast('⚠️ 无法连接云端服务器，禁止切换，请检查网络后重试'); return; }
   try {
-    const res = await supabaseRpc('login_check', { p_lname: lname, p_hash: rec.hash, p_hash_legacy: '' });
+    const res = await supabaseRpc('verify_token', { p_lname: lname, p_token: rec.token });
     if (!res || !res.ok) {
-      if (res && res.reason === 'locked') showToast('该账号已临时锁定，请 15 分钟后再试');
-      else if (res && res.reason === 'banned') showToast('该账号已被封禁');
+      if (res && res.reason === 'banned') showToast('该账号已被封禁');
       else showToast('该账号凭证已失效（密码可能已修改），请用密码重新登录一次');
       return;
     }
     // 切换成功：先离线旧账号，再载入新账号
     if (currentUser) cloudOffline(currentUser.name, currentUser.lname);
-    currentUser = { name: res.name, lname: res.lname || lname, hash: rec.hash, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
+    currentUser = { name: res.name, lname: res.lname || lname, token: rec.token, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
     setCurrentUser(currentUser);
     ensureLocalUser(currentUser);
     updateNavUser();
@@ -1522,10 +1585,24 @@ function pfUploadImage(input) {
   const f = input && input.files && input.files[0];
   if (!f) return;
   if (f.size > 500 * 1024) { showToast('图片过大，请选择 500KB 以内的图片'); input.value = ''; return; }
+  // 先本地预览，再异步上传到云端存储桶（头像同样不再把 base64 写进数据库）
   const reader = new FileReader();
-  reader.onload = (e) => {
-    currentUser.avatar_img = e.target.result;
+  reader.onload = async (e) => {
+    const preview = e.target.result;
+    currentUser.avatar_img = preview;
     pfRenderAvatar();
+    const url = await uploadImageToStorage(preview, 'avatars');
+    if (!url) {
+      currentUser.avatar_img = null;
+      pfRenderAvatar();
+      showToast('头像上传失败，请检查网络后重试');
+      return;
+    }
+    currentUser.avatar_img = url;
+    currentUser.avatarColor = ''; // 图片头像优先于纯色
+    currentUser.avatar_color = '';
+    pfRenderAvatar();
+    showToast('头像已上传，保存资料后生效');
   };
   reader.readAsDataURL(f);
 }
@@ -1558,7 +1635,11 @@ async function pfSave() {
     try {
       const r = await supabaseRpc('change_password', { p_lname: currentUser.lname, p_old: oldHash, p_old_legacy: oldLegacy, p_new: newHash });
       if (!r || !r.ok) { showToast('当前密码不正确，改密失败'); return; }
-      currentUser.hash = newHash;
+      // 改密成功：服务端轮换会话令牌（其他设备全部下线），本机保存新令牌；不再保存密码哈希
+      if (r.token) {
+        currentUser.token = r.token;
+        setSavedToken(currentUser.lname || (currentUser.name || '').toLowerCase(), r.token);
+      }
     } catch(e) {
       showToast('⚠️ 云端改密失败，请检查网络后重试');
       return;
@@ -1738,13 +1819,21 @@ async function submitPost() {
   const content = document.getElementById('postContent').value.trim();
   if (!title) { showToast('请输入标题'); return; }
   if (!content) { showToast('请输入内容'); return; }
+  // 图片：base64 优先上传存储桶得到公开 URL（不再把 base64 写进数据库）；编辑旧图（已是 URL）直接使用
+  let imageForSubmit = postImageData || null;
+  if (imageForSubmit && imageForSubmit.indexOf('data:') === 0) {
+    const url = await uploadImageToStorage(imageForSubmit, 'post-images');
+    if (url) imageForSubmit = url;
+    else if (editingPost) { showToast('图片上传失败，请检查网络后重试'); return; }
+    // 新建帖子且上传失败（云端不可用）：保留 base64 仅存本地草稿，不进云端库
+  }
   // 编辑模式：调用作者编辑 RPC（服务端校验凭证）
   if (editingPost) {
     try {
-      const r = await supabaseRpc('author_edit_post', { p_id: Number(editingPost.id), p_token: editingPost.token, p_title: title, p_content: content, p_image: postImageData || null });
+      const r = await supabaseRpc('author_edit_post', { p_id: Number(editingPost.id), p_token: editingPost.token, p_title: title, p_content: content, p_image: imageForSubmit });
       if (!r || !r.ok) { showToast('编辑失败：无权限或帖子不存在'); return; }
       const row = getPosts().find(x => String(x.id) === editingPost.id);
-      if (row) { row.title = title; row.content = content; row.image = postImageData || null; }
+      if (row) { row.title = title; row.content = content; row.image = imageForSubmit; }
       editingPost = null;
       closePost();
       showToast('已保存修改');
@@ -1760,7 +1849,7 @@ async function submitPost() {
     game: '全部', // 不再选择游戏，统一发到「全部」
     title: title,
     excerpt: content,
-    image: postImageData
+    image: imageForSubmit
   });
   closePost();
   showToast('发布成功');
@@ -1854,6 +1943,8 @@ currentUser = getCurrentUser();
 updateNavUser();
 loadLiked();
 loadPostTokens(); // 加载本机保存的作者操作凭证
+loadCommentTokens(); // 加载本机保存的评论操作凭证
+migrateLocalCredentials(); // 一次性迁移：清除旧版 gh_users 中遗留的密码哈希
 if (currentUser) {
   cloudHeartbeat(currentUser.name, currentUser.lname);
   refreshCloudPerms(); // 云端复核真实权限（管理员/封禁），防本地伪造
@@ -1884,7 +1975,7 @@ async function refreshCloudPerms() {
     try {
       const users = getUsers();
       const idx = users.findIndex(x => x.lname === lname);
-      const synced = { name: currentUser.name, lname: lname, hash: currentUser.hash, avatar_color: currentUser.avatar_color, bio: currentUser.bio || '', avatar_img: currentUser.avatar_img || null, uid: currentUser.uid || '' };
+      const synced = { name: currentUser.name, lname: lname, token: currentUser.token || getSavedToken(lname), avatar_color: currentUser.avatar_color, bio: currentUser.bio || '', avatar_img: currentUser.avatar_img || null, uid: currentUser.uid || '' };
       if (idx >= 0) users[idx] = Object.assign({}, users[idx], synced);
       else users.push(synced);
       saveUsers(users);
@@ -1972,7 +2063,7 @@ function renderPosts() {
       <div class="post-comments" onclick="event.stopPropagation()">
         ${comments.map(c=>`
           <div class="comment-item">
-            <div class="comment-user">${esc(c.user)}<span>${esc(c.time)}</span></div>
+            <div class="comment-user">${esc(c.user)}<span>${esc(c.time)}</span>${getCommentToken(c.id) ? `<button class="ig-shop-btn" style="background:#e74c3c;margin-left:8px;padding:1px 8px;font-size:11px;border-radius:6px;" onclick="deleteComment('${esc(c.id)}')">删除</button>` : ''}</div>
             <div>${esc(c.text)}</div>
           </div>
         `).join('') || '<div style="color:var(--text-secondary);font-size:13px;padding:8px 0;">还没有评论，来抢沙发</div>'}
@@ -1993,13 +2084,18 @@ function togglePost(card) {
 
 // ===== 评论（云端 comments 表 + 本地兜底，按帖子ID关联） =====
 let commentsMap = {};
+// 评论作者操作凭证：token 只存本机（云端 comment_token 列不可读），作者凭它删除自己的评论
+let commentTokenMap = {};
+function loadCommentTokens() { try { commentTokenMap = JSON.parse(localStorage.getItem('gh_comment_tokens') || '{}'); } catch { commentTokenMap = {}; } }
+function saveCommentTokens() { try { localStorage.setItem('gh_comment_tokens', JSON.stringify(commentTokenMap)); } catch {} }
+function getCommentToken(cid) { return cid != null ? (commentTokenMap[String(cid)] || null) : null; }
 async function loadComments() {
   try { commentsMap = JSON.parse(localStorage.getItem('gh_comments_v2') || '{}'); } catch { commentsMap = {}; }
   try {
     const rows = await supabaseRest('GET', 'comments', 'select=*&order=created_at.desc&limit=1000');
     const map = {};
     (rows || []).forEach(c => {
-      (map[c.post_id] = map[c.post_id] || []).push({ user: c.user_name, text: c.content, time: '刚刚', cloud: true });
+      (map[c.post_id] = map[c.post_id] || []).push({ id: c.id, user: c.user_name, text: c.content, time: '刚刚', cloud: true });
     });
     Object.keys(commentsMap).forEach(k => {
       if (!map[k] || String(k).startsWith('local_')) map[k] = commentsMap[k];
@@ -2012,13 +2108,43 @@ function getComments(pid) { return (commentsMap && commentsMap[pid]) || []; }
 async function saveComment(pid, text) {
   if (!commentsMap) commentsMap = {};
   if (!commentsMap[pid]) commentsMap[pid] = [];
-  commentsMap[pid].unshift({ user: currentUser ? currentUser.name : '匿名', acct: currentUser ? (currentUser.lname || currentUser.name) : '', text: text, time: '刚刚' });
+  // 生成评论操作凭证（仅存本机），云端只存 hash，不可读
+  const ctoken = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const lc = { id: 'c_local_' + Date.now() + Math.floor(Math.random()*1000), user: currentUser ? currentUser.name : '匿名', acct: currentUser ? (currentUser.lname || currentUser.name) : '', text: text, time: '刚刚', token: ctoken };
+  commentsMap[pid].unshift(lc);
   try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
   if (!String(pid).startsWith('local_')) {
     try {
-      await supabaseRest('POST', 'comments', '', { post_id: pid, user_name: currentUser.name, lname: currentUser.lname || null, content: text });
+      const rows = await supabaseRest('POST', 'comments', 'select=id', { post_id: pid, user_name: currentUser.name, lname: currentUser.lname || null, content: text, comment_token: ctoken });
+      if (rows && rows[0] && rows[0].id) {
+        const realId = String(rows[0].id);
+        commentTokenMap[realId] = ctoken;
+        saveCommentTokens();
+        const arr = commentsMap[pid];
+        const idx = arr.indexOf(lc);
+        if (idx >= 0) arr[idx].id = realId;
+        try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
+      }
     } catch(e) {}
   }
+}
+// 作者删除自己的评论（服务端校验评论凭证），旧评论仅管理员可删
+async function deleteComment(cid) {
+  if (!cid) { showToast('删除失败'); return; }
+  const key = String(cid);
+  const tk = getCommentToken(cid);
+  if (!tk) { showToast('该评论无删除权限（旧评论需管理员在管理后台删除）'); return; }
+  if (!confirm('确定删除这条评论吗？删除后无法恢复。')) return;
+  try {
+    const r = await supabaseRpc('author_delete_comment', { p_id: Number(cid), p_token: tk });
+    if (!r || !r.ok) { showToast('删除失败：无权限或评论不存在'); return; }
+    delete commentTokenMap[key];
+    saveCommentTokens();
+    Object.keys(commentsMap).forEach(pid => { commentsMap[pid] = commentsMap[pid].filter(c => String(c.id) !== key); });
+    try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
+    showToast('评论已删除');
+    renderPosts();
+  } catch(e) { showToast('删除失败：' + e.message); }
 }
 function submitComment(pid) {
   if (!currentUser) { showToast('请先登录再评论'); openAuth(); return; }
@@ -2045,7 +2171,7 @@ async function refreshCloud() {
     _cloudKey = key;
     cloudPosts = posts || [];
     const map = {};
-    (comments || []).forEach(c => (map[c.post_id] = map[c.post_id] || []).push({ user: c.user_name, text: c.content, time: '刚刚', cloud: true }));
+    (comments || []).forEach(c => (map[c.post_id] = map[c.post_id] || []).push({ id: c.id, user: c.user_name, text: c.content, time: '刚刚', cloud: true }));
     Object.keys(commentsMap).forEach(k => { if (!map[k] || String(k).startsWith('local_')) map[k] = commentsMap[k]; });
     commentsMap = map;
     // 正在输入评论时不重绘，避免光标丢失
@@ -2056,32 +2182,50 @@ async function refreshCloud() {
 }
 setInterval(refreshCloud, 4000);
 
-// ===== 点赞（持久化：本地记录 + 云端数字同步） =====
+// ===== 点赞（持久化：本地记录 + 云端计数走服务端 RPC，每人每帖仅一次，防匿名刷赞/直改库） =====
+function persistLikesLocal() {
+  try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+}
 async function toggleLike(el, pid) {
   if (!currentUser) { showToast('请先登录再点赞'); openAuth(); return; }
   if (!pid) { showToast('该帖子暂不支持云端点赞'); return; }
   const key = String(pid);
   const p = cloudPosts.find(x => String(x.id) === key);
-  if (likedPosts.has(key)) {
-    likedPosts.delete(key);
-    if (p) { p.likes = Math.max(0, (p.likes || 0) - 1); syncLikeCloud(p); }
-    showToast('已取消点赞');
-  } else {
-    likedPosts.add(key);
-    if (p) { p.likes = (p.likes || 0) + 1; syncLikeCloud(p); }
-    showToast('点赞成功');
-  }
+  const willLike = !likedPosts.has(key);
+  // 乐观更新 UI
+  if (willLike) likedPosts.add(key); else likedPosts.delete(key);
+  if (p) { p.likes = Math.max(0, (p.likes || 0) + (willLike ? 1 : -1)); }
   saveLiked();
+  persistLikesLocal();
   renderPosts();
-}
-function syncLikeCloud(p) {
-  const idx = cloudPosts.findIndex(x => String(x.id) === String(p.id));
-  if (idx >= 0) {
-    cloudPosts[idx].likes = p.likes;
-    try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
-  }
-  if (!String(p.id).startsWith('local_')) {
-    try { supabaseRest('PATCH', 'posts', 'id=eq.' + p.id, { likes: p.likes }); } catch(e) {}
+  showToast(willLike ? '点赞成功' : '已取消点赞');
+  // 本地草稿帖子：仅本机记录，不涉及云端
+  if (key.indexOf('local_') === 0) return;
+  // 云端点赞走服务端 RPC：校验本机会话令牌，服务端按账号去重（每人一赞）
+  const rollback = () => {
+    if (willLike) likedPosts.delete(key); else likedPosts.add(key);
+    if (p) { p.likes = Math.max(0, (p.likes || 0) + (willLike ? -1 : 1)); }
+    saveLiked();
+    persistLikesLocal();
+    renderPosts();
+  };
+  try {
+    const r = await supabaseRpc(willLike ? 'like_post' : 'unlike_post', {
+      p_post_id: Number(key),
+      p_lname: currentUser.lname || currentUser.name.toLowerCase(),
+      p_token: myToken()
+    });
+    if (!r || !r.ok) {
+      rollback();
+      showToast((r && r.reason === 'no_perm') ? '点赞失败：登录状态已失效，请重新登录' : '点赞失败：云端未升级或网络异常');
+      return;
+    }
+    if (p && typeof r.likes === 'number') p.likes = r.likes;
+    persistLikesLocal();
+    renderPosts();
+  } catch(e) {
+    rollback();
+    showToast('点赞失败：' + e.message);
   }
 }
 
@@ -2129,7 +2273,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       var rgFrame = document.getElementById('rgFrame');
       if (rgFrame && !rgFrame.getAttribute('data-loaded')) {
         rgFrame.setAttribute('data-loaded', '1');
-        rgFrame.src = '肉鸽index.html';
+        rgFrame.src = 'rogeindex.html';
       }
       // 每次切进来都通知一次登录态，保证云端进度最新
       rgSyncLogin();
@@ -2148,7 +2292,11 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
 function rgSyncLogin() {
   try {
     var f = document.getElementById('rgFrame');
-    if (f && f.contentWindow) { f.contentWindow.postMessage({ type: 'gh-login' }, '*'); }
+    if (f && f.contentWindow) {
+      // 只发给本站（同源或 file:// 场景的 "null"），不向任意来源广播
+      var tg = (location.origin && location.origin !== 'null') ? location.origin : 'null';
+      f.contentWindow.postMessage({ type: 'gh-login' }, tg);
+    }
   } catch (e) {}
 }
 
@@ -3155,11 +3303,11 @@ async function rankLoad() {
   users = users || [];
   const nameMap = {}, accts = new Set();
   users.forEach(u => { if (u && u.lname) { accts.add(u.lname); if (u.name) nameMap[u.lname] = u.name; } });
-  // 2) 云端存档
+  // 2) 云端存档：服务端按土方(jsonb 数值)排序 + 限量拉取，不再全量扫描后前端排序
   let rows = [];
-  try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); }
-  catch(e) { body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>'; return; }
-  rows = rows || [];
+  try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&order=save_data->soilBalance.desc&limit=300'); }
+  catch(e) { try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=300'); } catch(e2) {} }
+  if (!rows) rows = [];
   if (!rows.length || !accts.size) {
     body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">暂无上榜玩家</div>';
     return;
@@ -3463,20 +3611,25 @@ function admReset() {
 document.getElementById('adminPanel').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
-// 在线心跳：登录状态下每20秒把"在线"状态上报云端（名称 + 账号分列存储）
+// 在线心跳：登录状态下每20秒把"在线"状态上报云端（走 set_online RPC，返回仅本机保存的在线令牌）
+function getOnlineToken(lname) {
+  try { const m = JSON.parse(localStorage.getItem('gh_online_tokens') || '{}'); return m[lname] || ''; } catch { return ''; }
+}
+function setOnlineToken(lname, t) {
+  try { const m = JSON.parse(localStorage.getItem('gh_online_tokens') || '{}'); if (t) m[lname] = t; else delete m[lname]; localStorage.setItem('gh_online_tokens', JSON.stringify(m)); } catch {}
+}
 async function cloudHeartbeat(userName, acct) {
   try {
-    const now = new Date().toISOString();
-    const q = 'user_name=eq.' + encodeURIComponent(userName) + '&lname=eq.' + encodeURIComponent(acct || userName);
-    const rows = await supabaseRest('GET', 'online_users', q + '&limit=1');
-    if (rows && rows[0]) await supabaseRest('PATCH', 'online_users', q, { last_seen: now });
-    else await supabaseRest('POST', 'online_users', '', { user_name: userName, lname: acct || userName, last_seen: now });
+    const lname = acct || userName;
+    const res = await supabaseRpc('set_online', { p_user_name: userName, p_lname: lname, p_token: getOnlineToken(lname) });
+    if (res && res.ok && res.token && res.token !== getOnlineToken(lname)) setOnlineToken(lname, res.token);
   } catch(e) {}
 }
 async function cloudOffline(userName, acct) {
   try {
-    const q = 'user_name=eq.' + encodeURIComponent(userName) + '&lname=eq.' + encodeURIComponent(acct || userName);
-    await supabaseRest('DELETE', 'online_users', q);
+    const lname = acct || userName;
+    const res = await supabaseRpc('clear_online', { p_lname: lname, p_token: getOnlineToken(lname) });
+    if (res && res.ok) setOnlineToken(lname, '');
   } catch(e) {}
 }
 // 定时心跳（登录就上报；没登录跳过）

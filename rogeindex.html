@@ -931,6 +931,10 @@ function rgInitCloud(){
   if(rgLname()) cloudLoad();
   // 主页面登录/切换/登出后通知 → 重新加载云端（未登录期间访客存档并入当前账号）
   window.addEventListener('message', function(e){
+    // 仅接受本站父页面的登录通知（同源或 file:// 场景 origin 均为 "null"），拒绝第三方页面伪造消息
+    var okOrigin = (window.location.origin === 'null') ? (e.origin === 'null') : (e.origin === window.location.origin);
+    if(!okOrigin) return;
+    if(window.parent !== window && e.source !== window.parent) return;
     if(e.data && e.data.type==='gh-login'){
       try{
         const g=JSON.parse(localStorage.getItem(STORE_KEY+'_guest'));
