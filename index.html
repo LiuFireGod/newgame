@@ -674,7 +674,7 @@
     <div class="game-tag active" data-game="全部">全部</div>
     <div class="game-tag" data-game="愚公移山">愚公移山</div>
     <div class="game-tag" data-game="STS">杀戮尖塔</div>
-    <div class="game-tag" data-game="游戏3">游戏3</div>
+    <div class="game-tag" data-game="造梦西游3">造梦西游3</div>
     <div class="game-tag" data-game="游戏4">游戏4</div>
     <div class="game-tag" data-game="游戏5">游戏5</div>
     <div class="game-tag" data-game="游戏6">游戏6</div>
@@ -2094,6 +2094,15 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('gameInfoView').classList.add('show');
+    } else if (currentGame === "造梦西游3") {
+      // 独立游戏页（同域子目录，Ruffle 播放器）
+      window.open('zmxy3/', '_blank', 'noopener');
+      document.querySelectorAll('.game-tag').forEach(t => t.classList.remove('active'));
+      document.querySelector('.game-tag[data-game="全部"]').classList.add('active');
+      currentGame = "全部";
+      document.getElementById('postList').style.display = '';
+      document.getElementById('gameView').classList.remove('show');
+      document.getElementById('gameInfoView').classList.remove('show');
     } else {
       document.getElementById('postList').style.display = '';
       document.getElementById('gameView').classList.remove('show');

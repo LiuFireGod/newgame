@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>造梦西游3 · 云端版</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    background: linear-gradient(160deg, #1b2a4a 0%, #0b1220 70%);
+    color:#e8eefc; font-family:"Microsoft YaHei",system-ui,sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100vh;
+  }
+  .top {
+    width:100%; padding:10px 16px; display:flex; align-items:center;
+    justify-content:space-between; gap:10px; flex-wrap:wrap;
+    background:rgba(0,0,0,.45); border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .top h1 { font-size:17px; color:#ffd76a; font-weight:700; letter-spacing:1px; }
+  .top .links { display:flex; gap:8px; font-size:12px; }
+  .top a {
+    color:#8fa3c8; text-decoration:none; padding:5px 10px;
+    border:1px solid rgba(255,255,255,.15); border-radius:8px; background:rgba(255,255,255,.05);
+  }
+  .top a:hover { color:#fff; border-color:#ffd76a; }
+  .wrap {
+    width:100%; max-width:940px; padding:12px; flex:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .stage {
+    position:relative; width:100%; max-width:940px; aspect-ratio:940/590;
+    background:#000; border-radius:10px; overflow:hidden;
+    border:1px solid rgba(255,255,255,.12); box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .stage ruffle-player { width:100% !important; height:100% !important; }
+  .overlay {
+    position:absolute; inset:0; z-index:10; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background: radial-gradient(circle at 50% 35%, rgba(27,42,74,.6), rgba(0,0,0,.85));
+  }
+  .overlay .logo { font-size:34px; font-weight:800; color:#ffd76a; text-shadow:0 4px 20px rgba(255,215,106,.4); letter-spacing:3px; }
+  .overlay .sub { font-size:15px; color:#c8d4ec; }
+  .overlay .btn {
+    padding:12px 40px; border-radius:12px; font-size:17px; font-weight:700; color:#0b1220;
+    background:linear-gradient(135deg,#ffd76a,#ff9a3c); border:none; cursor:pointer;
+    box-shadow:0 8px 28px rgba(255,154,60,.35); transition:transform .15s;
+  }
+  .overlay .btn:hover { transform:scale(1.05); }
+  .overlay .tip { font-size:11px; color:#7d8db0; }
+  #st {
+    margin-top:10px; font-size:12px; color:#8fa3c8; min-height:18px; text-align:center;
+  }
+  #st.err { color:#ff8080; }
+  .fsbtn {
+    position:absolute; right:10px; bottom:10px; z-index:20;
+    padding:7px 14px; font-size:12px; border-radius:8px; cursor:pointer;
+    background:rgba(255,255,255,.12); color:#e8eefc; border:1px solid rgba(255,255,255,.2);
+  }
+  .fsbtn:hover { background:rgba(255,255,255,.22); }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>造梦西游3 · 云端版</h1>
+  <div class="links">
+    <a href="../">← 返回游戏社区</a>
+    <a href="javascript:void(0)" onclick="toggleFs()">全屏</a>
+  </div>
+</div>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <div class="overlay" id="overlay" onclick="startGame()">
+      <div class="logo">造梦西游3</div>
+      <div class="sub">大闹天庭篇 · 云端单机版</div>
+      <button class="btn" id="startBtn">开始游戏</button>
+      <div class="tip">建议电脑端游玩 · 存档自动保存在本浏览器</div>
+    </div>
+    <button class="fsbtn" onclick="toggleFs()">⛶ 全屏</button>
+  </div>
+  <div id="st">加载中…</div>
+</div>
+<script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+<script>
+var player = null;
+function startGame() {
+  var ov = document.getElementById('overlay');
+  var st = document.getElementById('st');
+  ov.style.display = 'none';
+  st.textContent = '正在加载游戏…';
+  try {
+    var module = window.RufflePlayer.newest();
+    player = module.createPlayer();
+    player.style.width = '100%';
+    player.style.height = '100%';
+    document.getElementById('stage').insertBefore(player, document.getElementById('stage').firstChild);
+    player.addEventListener('loadedmetadata', function(){ st.textContent = '游戏加载完成 ✓（存档保存在本浏览器）'; });
+    player.addEventListener('error', function(e){
+      st.className = 'err';
+      st.textContent = '加载失败：' + (e.detail || e.message || '未知错误');
+    });
+    // 加载主游戏（launcher 为入口，游戏内资源按相对路径加载）
+    player.load({ url: 'launcher.swf', allowScriptAccess: true, base: '' });
+  } catch(e) {
+    st.className = 'err';
+    st.textContent = '启动失败：' + e.message + '（请检查网络/刷新重试）';
+  }
+}
+function toggleFs() {
+  var el = document.getElementById('stage');
+  if (!document.fullscreenElement) { (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+  else { document.exitFullscreen(); }
+}
+</script>
+</body>
+</html>
