@@ -184,7 +184,7 @@ async function admCloudCheck() {
 }
 
 // ===== 状态 =====
-let allUsers = [], allPosts = [], allComments = [], onlineNames = new Set();
+let allUsers = [], allPosts = [], allComments = [], onlineNames = new Set(), onlineAccts = new Set();
 let hasBanned = false, hasAdmin = false, dbReady = false;
 let curTab = 'overview', query = '';
 
@@ -198,10 +198,11 @@ async function loadAll() {
       supabaseRest('GET', 'users', 'select=*&order=created_at.desc&limit=1000').catch(() => []),
       supabaseRest('GET', 'posts', 'select=id,user_name,avatar_color,game,title,content,likes,created_at&order=created_at.desc&limit=1000').catch(() => []),
       supabaseRest('GET', 'comments', 'select=id,post_id,user_name,content,created_at&order=created_at.desc&limit=2000').catch(() => []),
-      supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(new Date(Date.now()-60000).toISOString()) + '&select=user_name').catch(() => [])
+      supabaseRest('GET', 'online_users', 'last_seen=gt.' + encodeURIComponent(new Date(Date.now()-60000).toISOString()) + '&select=user_name,lname').catch(() => [])
     ]);
     allUsers = users || []; allPosts = posts || []; allComments = comments || [];
-    onlineNames = new Set((onrows || []).map(r => r.user_name));
+    onlineNames = new Set((onrows || []).map(r => r.user_name).filter(Boolean));
+    onlineAccts = new Set((onrows || []).map(r => r.lname).filter(Boolean));
     const probeRow = (allUsers && allUsers[0]) || {};
     hasBanned = 'banned' in probeRow;
     hasAdmin = 'is_admin' in probeRow;
@@ -249,7 +250,7 @@ function render() {
     </div>` : ''}
     <div class="stats">
       <div class="stat"><div class="stat-label">注册用户</div><div class="stat-value">${allUsers.length}</div><div class="stat-sub">今日新增 ${allUsers.filter(x => new Date(x.created_at) >= today).length}</div></div>
-      <div class="stat"><div class="stat-label">当前在线</div><div class="stat-value" style="color:var(--green);">${onlineNames.size}</div><div class="stat-sub">60 秒内有活跃</div></div>
+      <div class="stat"><div class="stat-label">当前在线</div><div class="stat-value" style="color:var(--green);">${new Set([...onlineAccts, ...onlineNames]).size}</div><div class="stat-sub">60 秒内有活跃</div></div>
       <div class="stat"><div class="stat-label">帖子总数</div><div class="stat-value">${allPosts.length}</div><div class="stat-sub">今日新帖 ${todayPosts}</div></div>
       <div class="stat"><div class="stat-label">评论总数</div><div class="stat-value">${allComments.length}</div><div class="stat-sub">总点赞 ${allPosts.reduce((s,p)=>s+(p.likes||0),0)}</div></div>
       <div class="stat"><div class="stat-label">管理员</div><div class="stat-value" style="color:var(--accent-light);">${allUsers.filter(x=>x.is_admin===true||ADMIN_USERS.includes((x.lname||'').toLowerCase())).length}</div><div class="stat-sub">含本地名单</div></div>
@@ -317,7 +318,7 @@ function renderUsers() {
     return `<div class="row">
       <div class="row-main">
         <div class="row-title"><span class="dot" style="background:${esc(u.avatar_color || '#6c5ce7')};"></span>${esc(u.name)}${tag}</div>
-        <div class="row-meta"><span>注册于 ${fmtTime(u.created_at)}</span><span>${st.posts} 帖</span><span>${st.comments} 评</span>${onlineNames.has(u.name)?'<span style="color:var(--green);">在线</span>':''}</div>
+        <div class="row-meta"><span>注册于 ${fmtTime(u.created_at)}</span><span>${st.posts} 帖</span><span>${st.comments} 评</span>${(onlineNames.has(u.name) || onlineAccts.has(u.lname) || onlineNames.has(u.lname)) ? '<span style="color:var(--green);">在线</span>' : ''}</div>
       </div>
       <div class="row-actions">
         ${isAdm

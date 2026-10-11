@@ -1184,7 +1184,7 @@ async function handleAuth() {
         await igLoad();
         igRender();
         showToast('登录成功，欢迎 ' + currentUser.name);
-        cloudHeartbeat(currentUser.name);
+        cloudHeartbeat(currentUser.name, currentUser.lname);
         return;
       }
     } else {
@@ -1206,7 +1206,7 @@ async function handleAuth() {
           await igLoad();
           igRender();
           showToast('注册成功，账号已同步云端');
-          cloudHeartbeat(currentUser.name);
+          cloudHeartbeat(currentUser.name, currentUser.lname);
           return;
         }
       }
@@ -1248,7 +1248,7 @@ function logout() {
   const prev = currentUser;
   currentUser = null;
   setCurrentUser(null);
-  if (prev) cloudOffline(prev.name);
+  if (prev) cloudOffline(prev.name, prev.lname);
   updateNavUser();
   document.getElementById('userMenu').classList.remove('show');
   document.getElementById('authUser').value = '';
@@ -1518,7 +1518,7 @@ currentUser = getCurrentUser();
 updateNavUser();
 loadLiked();
 if (currentUser) {
-  cloudHeartbeat(currentUser.name);
+  cloudHeartbeat(currentUser.name, currentUser.lname);
   refreshCloudPerms(); // 云端复核真实权限（管理员/封禁），防本地伪造
 }
 
@@ -3075,20 +3075,24 @@ function admReset() {
 document.getElementById('adminPanel').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
-// 在线心跳：登录状态下每20秒把"在线"状态上报云端
-async function cloudHeartbeat(userName) {
+// 在线心跳：登录状态下每20秒把"在线"状态上报云端（名称 + 账号分列存储）
+async function cloudHeartbeat(userName, acct) {
   try {
     const now = new Date().toISOString();
-    const rows = await supabaseRest('GET', 'online_users', 'user_name=eq.' + encodeURIComponent(userName) + '&limit=1');
-    if (rows && rows[0]) await supabaseRest('PATCH', 'online_users', 'user_name=eq.' + encodeURIComponent(userName), { last_seen: now });
-    else await supabaseRest('POST', 'online_users', '', { user_name: userName, last_seen: now });
+    const q = 'user_name=eq.' + encodeURIComponent(userName) + '&lname=eq.' + encodeURIComponent(acct || userName);
+    const rows = await supabaseRest('GET', 'online_users', q + '&limit=1');
+    if (rows && rows[0]) await supabaseRest('PATCH', 'online_users', q, { last_seen: now });
+    else await supabaseRest('POST', 'online_users', '', { user_name: userName, lname: acct || userName, last_seen: now });
   } catch(e) {}
 }
-async function cloudOffline(userName) {
-  try { await supabaseRest('DELETE', 'online_users', 'user_name=eq.' + encodeURIComponent(userName)); } catch(e) {}
+async function cloudOffline(userName, acct) {
+  try {
+    const q = 'user_name=eq.' + encodeURIComponent(userName) + '&lname=eq.' + encodeURIComponent(acct || userName);
+    await supabaseRest('DELETE', 'online_users', q);
+  } catch(e) {}
 }
 // 定时心跳（登录就上报；没登录跳过）
-setInterval(() => { if (currentUser) cloudHeartbeat(currentUser.name); }, 20000);
+setInterval(() => { if (currentUser) cloudHeartbeat(currentUser.name, currentUser.lname); }, 20000);
 
 // 按 P 键呼出游戏后台（需要管理员权限，无权限静默不响应）
 document.addEventListener('keydown', (e)=>{
