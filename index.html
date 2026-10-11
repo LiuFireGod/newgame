@@ -1013,12 +1013,10 @@ let toastTimer; // 提前声明，避免 showToast 在脚本初始化完成前�
 let cloudPosts = []; // 提前声明，供 init 中 loadPosts/renderPosts 使用（帖子）
 let currentGame = "全部"; // 提前声明，供 init 中 renderPosts 使用
 let likedPosts = new Set(); // 提前声明，供 init 中 renderPosts 使用
-// 管理员名单（不区分大小写，云端 is_admin 优先）—— 必须提前声明，避免初始化时 TDZ 报错导致脚本中断
-const ADMIN_USERS = ['asd1316947244'];
+// 管理员判定：只信任云端 is_admin 字段（由服务端 login_check/RPC 返回真实值），
+// 前端不硬编码任何管理员名单，杜绝名单泄露与本地伪造
 function isAdminUser(u) {
-  if (!u) return false;
-  if (u.is_admin === true) return true;
-  return ADMIN_USERS.includes(u.lname || (u.name || '').toLowerCase());
+  return !!(u && u.is_admin === true);
 }
 // ===== 云端（Supabase REST）：帖子跨设备共享（不依赖外部CDN，直接用 fetch） =====
 const SUPABASE_URL = 'https://ycxasrnnvwhcvzkmwhxu.supabase.co';
@@ -1133,7 +1131,7 @@ function getCurrentUser() {
     const real = users.find(x => x.lname === (u.lname || u.name.toLowerCase()));
     if (!real) return null;
     // 安全：is_admin/banned 一律不信任本地快照（可伪造），启动时由 refreshCloudPerms 从云端复核写入；
-    // 云端不可用时回退到硬编码 ADMIN_USERS 名单
+    // 云端不可用时保持非管理员（不泄露名单、不授予权限）
     return Object.assign({}, real, u, { avatarColor: real.avatar_color }, { is_admin: false, banned: false });
   } catch { return null; }
 }
@@ -1198,10 +1196,17 @@ async function nextUid() {
     return (uid && typeof uid === 'string') ? uid : null;
   } catch(e) { return null; }
 }
+// 随机邀请码（8位，不含易混淆字符）：分享链接用邀请码而非账号名，避免泄露账号信息
+function makeInviteCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
 async function cloudCreateUser(u) {
   for (let i = 0; i < 6; i++) {
     try {
-      await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color, uid: u.uid });
+      await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color, uid: u.uid, invite_code: u.invite_code || makeInviteCode() });
       return true;
     } catch(e) {
       // uid 唯一冲突（并发注册撞号）→ 重新取最小空号再试；分配失败则中止
@@ -1251,11 +1256,12 @@ async function handleAuth() {
       // 登录验证在服务端 RPC 完成（password_hash 不下发）
       const res = await supabaseRpc('login_check', { p_lname: lname, p_hash: hash, p_hash_legacy: legacyHash });
       if (!res || !res.ok) {
-        if (res && res.reason === 'no_user') showToast('该用户名不存在，请先注册');
+        if (res && res.reason === 'locked') showToast('尝试次数过多，账号已临时锁定，请 ' + Math.ceil((res.retry_after||900)/60) + ' 分钟后再试');
+        else if (res && res.reason === 'no_user') showToast('该用户名不存在，请先注册');
         else if (res && res.reason === 'banned') showToast('该账号已被封禁，请联系管理员');
         else showToast('密码错误，请重新输入');
       } else {
-        currentUser = { name: res.name, lname: res.lname || lname, hash: hash, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid };
+        currentUser = { name: res.name, lname: res.lname || lname, hash: hash, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1274,7 +1280,7 @@ async function handleAuth() {
         const nuid = await nextUid();
         if (!nuid) { showToast('⚠️ UID 分配失败，请检查网络后重试'); }
         else {
-          const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor, uid: nuid };
+          const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor, uid: nuid, invite_code: makeInviteCode() };
           const ok = await cloudCreateUser(newUser);
           if (!ok) {
             showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
@@ -1743,12 +1749,12 @@ async function refreshCloudPerms() {
   const lname = currentUser.lname || currentUser.name.toLowerCase();
   let cloud = null;
   try {
-    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin,banned,name,bio,avatar_color,avatar_img,uid&limit=1');
+    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin,banned,name,bio,avatar_color,avatar_img,uid,invite_code&limit=1');
     cloud = rows && rows[0] ? rows[0] : null;
-  } catch(e) { /* 云端不可用：is_admin 回退硬编码名单 */ }
+  } catch(e) { /* 云端不可用：保持当前 is_admin（不授予、不泄露） */ }
   if (cloud) {
-    // 硬编码名单永远优先（asd1316947244 无论云端字段如何都是管理员），云端值作补充
-    currentUser.is_admin = ADMIN_USERS.includes(lname) || cloud.is_admin === true;
+    // 管理员身份以云端 is_admin 字段为准（服务端可审计），前端不设任何硬编码名单
+    currentUser.is_admin = cloud.is_admin === true;
     currentUser.banned = cloud.banned === true;
     // 云端资料同步：名称/简介/头像/UID 以云端为准，保证手机与 PC 显示一致
     if (cloud.name) currentUser.name = cloud.name;
@@ -1756,6 +1762,7 @@ async function refreshCloudPerms() {
     if (cloud.avatar_color) { currentUser.avatar_color = cloud.avatar_color; currentUser.avatarColor = cloud.avatar_color; }
     if (cloud.avatar_img !== undefined && cloud.avatar_img !== null) currentUser.avatar_img = cloud.avatar_img;
     if (cloud.uid) currentUser.uid = cloud.uid;
+    if (cloud.invite_code) currentUser.invite_code = cloud.invite_code;
     setCurrentUser(currentUser); // 写回真实值，覆盖伪造/过期快照
     // 同步本地用户列表（保持离线兜底与云端一致）
     try {
@@ -1767,7 +1774,7 @@ async function refreshCloudPerms() {
       saveUsers(users);
     } catch(e) {}
   } else {
-    currentUser.is_admin = ADMIN_USERS.includes(lname);
+    currentUser.is_admin = false; // 云端不可用：不授予管理员（无硬编码名单可回退）
   }
   if (currentUser.banned) {
     logout();
@@ -2781,7 +2788,8 @@ document.getElementById('profileModal').addEventListener('click', (e) => {
 function igMyInviteCode() {
   const u = currentUser;
   if (!u) return '';
-  return (u.lname || u.name || '').toLowerCase();
+  // 优先用随机邀请码（云端分配）；老账号未回填时兜底用账号（不影响功能，但链接不再暴露新账号）
+  return (u.invite_code || '').toUpperCase() || (u.lname || u.name || '').toLowerCase();
 }
 function openEvents() {
   const el = document.getElementById('eventsModal');
@@ -2795,17 +2803,18 @@ async function renderEvents() {
   if (!wrap) return;
   const u = currentUser;
   const invite = igMyInviteCode();
+  const myLname = (u && (u.lname || u.name.toLowerCase())) || '';
   // 钻石：本地 igState.diamonds（拉人奖励，由受邀玩家游玩后云端结算）
   const diamonds = (igState && igState.diamonds) || 0;
   let invitedCount = 0, giftBox = '';
   if (u && invite) {
     try {
-      // 从云端统计被本账号邀请的新玩家（save_data.invited_by === 我的账号）
+      // 从云端统计被本账号邀请的新玩家（受邀者存档 invited_by === 我的账号）
       const rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000');
       const mine = (rows || []).filter(r => {
         let sd = r.save_data;
         if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
-        return sd && sd.invited_by === invite && r.user_name !== invite;
+        return sd && sd.invited_by === myLname && r.user_name !== myLname;
       });
       invitedCount = mine.length;
       if (invitedCount > 0) {
@@ -3071,12 +3080,18 @@ document.getElementById('rankModal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
 
-// 云端存档 upsert（按 user_name）
+// 云端存档同步：走 save_game RPC（服务端校验存档凭证，匿名直连改删被数据库拒绝）
+let igSaveToken = '';
+function igGetSaveToken() { try { return localStorage.getItem('ig_save_token') || ''; } catch { return ''; } }
+function igSetSaveToken(t) { try { localStorage.setItem('ig_save_token', t); } catch {} }
 async function cloudUpsertSave(userName, saveData) {
   try {
-    const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(userName) + '&limit=1');
-    if (rows && rows[0]) await supabaseRest('PATCH', 'game_saves', 'user_name=eq.' + encodeURIComponent(userName), { save_data: saveData });
-    else await supabaseRest('POST', 'game_saves', '', { user_name: userName, save_data: saveData });
+    // save_data 列为 jsonb：RPC 参数需传对象（PostgREST 自动 JSON 序列化）
+    const payload = typeof saveData === 'string' ? JSON.parse(saveData) : saveData;
+    const res = await supabaseRpc('save_game', { p_user_name: userName, p_token: igGetSaveToken(), p_save_data: payload });
+    if (res && res.ok && res.token) {
+      if (res.token !== igGetSaveToken()) igSetSaveToken(res.token); // 首次建档返回凭证，仅存本机
+    }
   } catch(e) {}
 }
 function igSave() {
@@ -3112,11 +3127,16 @@ async function igLoad() {
       }
     } catch(e) {}
   }
-  // 邀请链接检测：首次通过 ?invite=xxx 打开时记录邀请人（用于拉人送钻石）
+  // 邀请链接检测：?invite= 为随机邀请码（非账号名），反查邀请人账号后记录（用于拉人送钻石）
   try {
     const p = new URLSearchParams(location.search);
-    const invFrom = (p.get('invite') || '').toLowerCase();
-    if (invFrom && !localStorage.getItem('ig_invite_from')) localStorage.setItem('ig_invite_from', invFrom);
+    const invCode = (p.get('invite') || '').toUpperCase();
+    if (invCode && !localStorage.getItem('ig_invite_from')) {
+      try {
+        const rows = await supabaseRest('GET', 'users', 'invite_code=eq.' + encodeURIComponent(invCode) + '&select=lname&limit=1');
+        if (rows && rows[0] && rows[0].lname) localStorage.setItem('ig_invite_from', rows[0].lname);
+      } catch(e) { /* 反查失败不记录，不阻塞进入 */ }
+    }
   } catch(e) {}
   // 被邀请人：把邀请关系写入存档（首次），随存档同步到云端
   const invitedFrom = localStorage.getItem('ig_invite_from');

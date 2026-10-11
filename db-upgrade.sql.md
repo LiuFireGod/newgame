@@ -255,3 +255,96 @@ GRANT EXECUTE ON FUNCTION public.next_uid() TO anon, authenticated;
 -- 修正已产生的乱号：999998 → 000003（最小空号）
 UPDATE public.users SET uid = '000003' WHERE uid = '999998';
 ```
+
+---
+
+## G. 安全加固第二轮（2026-10-11 已执行）
+
+对应漏洞清单：邀请码泄露（URL 敏感信息）、登录限流、存档防篡改（IDOR）。
+
+```sql
+-- 8. 随机邀请码：users 加 invite_code 列（不再用账号名）
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS invite_code text;
+UPDATE public.users SET invite_code = upper(substr(md5(random()::text), 1, 8))
+WHERE invite_code IS NULL OR invite_code = '';
+CREATE UNIQUE INDEX IF NOT EXISTS users_invite_code_key ON public.users (invite_code);
+GRANT SELECT (invite_code) ON public.users TO anon, authenticated;
+
+-- 7. 登录限流：失败 5 次锁 15 分钟（按账号，RPC 内实现）
+CREATE TABLE IF NOT EXISTS public.login_attempts (
+  lname text PRIMARY KEY,
+  fails integer NOT NULL DEFAULT 0,
+  locked_until bigint NOT NULL DEFAULT 0
+);
+REVOKE ALL ON public.login_attempts FROM anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.login_check(p_lname text, p_hash text, p_hash_legacy text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE; la public.login_attempts%ROWTYPE; now_ms bigint := floor(extract(epoch from clock_timestamp())*1000);
+BEGIN
+  SELECT * INTO la FROM public.login_attempts WHERE lname = p_lname LIMIT 1;
+  IF la.locked_until > now_ms THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'locked', 'retry_after', (la.locked_until - now_ms + 999) / 1000);
+  END IF;
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN
+    INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 1, 0)
+    ON CONFLICT (lname) DO UPDATE SET fails = login_attempts.fails + 1;
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_user');
+  END IF;
+  IF u.password_hash IS DISTINCT FROM p_hash AND u.password_hash IS DISTINCT FROM p_hash_legacy THEN
+    IF la.fails + 1 >= 5 THEN
+      INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 0, now_ms + 15*60*1000)
+      ON CONFLICT (lname) DO UPDATE SET fails = 0, locked_until = now_ms + 15*60*1000;
+      RETURN jsonb_build_object('ok', false, 'reason', 'locked', 'retry_after', 900);
+    END IF;
+    INSERT INTO public.login_attempts(lname, fails, locked_until) VALUES (p_lname, 1, 0)
+    ON CONFLICT (lname) DO UPDATE SET fails = login_attempts.fails + 1;
+    RETURN jsonb_build_object('ok', false, 'reason', 'bad_pass');
+  END IF;
+  IF u.banned = true THEN RETURN jsonb_build_object('ok', false, 'reason', 'banned'); END IF;
+  IF u.password_hash = p_hash_legacy AND u.password_hash NOT LIKE 'pbkdf2$%' THEN
+    UPDATE public.users SET password_hash = p_hash WHERE lname = p_lname;
+  END IF;
+  DELETE FROM public.login_attempts WHERE lname = p_lname;
+  RETURN jsonb_build_object('ok', true, 'lname', u.lname, 'name', u.name, 'is_admin', u.is_admin,
+    'banned', u.banned, 'avatar_color', u.avatar_color, 'bio', u.bio, 'avatar_img', u.avatar_img,
+    'uid', u.uid, 'invite_code', u.invite_code, 'migrated', (u.password_hash = p_hash_legacy AND u.password_hash NOT LIKE 'pbkdf2$%'));
+END $$;
+GRANT EXECUTE ON FUNCTION public.login_check(text,text,text) TO anon, authenticated;
+
+-- 6. 存档防篡改：game_saves 加 save_token，匿名直连禁 PATCH/DELETE，更新走 save_game RPC
+ALTER TABLE public.game_saves ADD COLUMN IF NOT EXISTS save_token text;
+CREATE OR REPLACE FUNCTION protect_game_saves_write()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF current_user NOT IN ('postgres','supabase_admin','service_role') THEN
+    RAISE EXCEPTION '修改/删除存档需通过存档凭证（save_game）';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_protect_game_saves_write ON game_saves;
+CREATE TRIGGER trg_protect_game_saves_write BEFORE UPDATE OR DELETE ON game_saves
+FOR EACH ROW EXECUTE FUNCTION protect_game_saves_write();
+
+CREATE OR REPLACE FUNCTION public.save_game(p_user_name text, p_token text, p_save_data jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.game_saves%ROWTYPE; new_token text;
+BEGIN
+  SELECT * INTO r FROM public.game_saves WHERE user_name = p_user_name LIMIT 1;
+  IF FOUND THEN
+    IF r.save_token IS NULL OR r.save_token <> p_token THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'no_perm');
+    END IF;
+    UPDATE public.game_saves SET save_data = p_save_data WHERE user_name = p_user_name;
+    RETURN jsonb_build_object('ok', true, 'token', p_token);
+  END IF;
+  new_token := 's' || substr(md5(random()::text), 1, 20);
+  INSERT INTO public.game_saves(user_name, save_data, save_token) VALUES (p_user_name, p_save_data, new_token);
+  RETURN jsonb_build_object('ok', true, 'token', new_token);
+END $$;
+GRANT EXECUTE ON FUNCTION public.save_game(text,text,jsonb) TO anon, authenticated;
+-- save_token 不可公开读（撤销表级 SELECT 后按列授权）
+REVOKE SELECT ON public.game_saves FROM anon, authenticated;
+GRANT SELECT (user_name, save_data) ON public.game_saves TO anon, authenticated;
+```

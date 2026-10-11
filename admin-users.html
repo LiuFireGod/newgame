@@ -76,8 +76,17 @@
 <script>
 const SUPABASE_URL = 'https://ycxasrnnvwhcvzkmwhxu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qALYuuKrijmsInYREJ8xyw_qkYJ8G7I';
-const ADMIN_USERS = ['asd1316947244']; // 本地兜底名单（云端 is_admin 优先）
-const ADMIN_SECRET = 'a8a4255fcff10fcdab0037b4eba047dcd8992b22717d2333'; // 管理操作密钥（对应数据库 RPC 校验）
+// 管理密钥不写入文件：打开后台时输入一次，仅存当前标签页会话（sessionStorage），关闭页面即失效
+let adminSecret = '';
+function getAdminSecret() {
+  if (adminSecret) return adminSecret;
+  try { adminSecret = sessionStorage.getItem('gh_admin_secret') || ''; } catch {}
+  if (!adminSecret) {
+    adminSecret = prompt('请输入管理密钥（仅本次会话有效）：') || '';
+    if (adminSecret) { try { sessionStorage.setItem('gh_admin_secret', adminSecret); } catch {} }
+  }
+  return adminSecret;
+}
 
 async function supabaseRest(method, table, query, body) {
   const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
@@ -119,7 +128,6 @@ function getCurrentUser() {
 async function isAdminCloud(u) {
   if (!u) return false;
   const lname = u.lname || (u.name || '').toLowerCase();
-  if (ADMIN_USERS.includes(lname)) return true; // 硬编码名单兜底（云端不可用也能进）
   try {
     const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin&limit=1');
     return !!(rows && rows[0] && rows[0].is_admin === true);
@@ -127,8 +135,7 @@ async function isAdminCloud(u) {
 }
 function isAdmin(u) {
   if (!u) return false;
-  if (ADMIN_USERS.includes((u.lname || (u.name || '').toLowerCase()))) return true;
-  return u.is_admin === true; // 仅当被云端复核（isAdminCloud）写入时才为 true
+  return u.is_admin === true; // 仅当被云端复核（isAdminCloud）写入时才为 true，前端不设名单
 }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -268,7 +275,7 @@ function render() {
       <div class="stat"><div class="stat-label">当前在线</div><div class="stat-value" style="color:var(--green);">${new Set([...onlineAccts, ...onlineNames]).size}</div><div class="stat-sub">60 秒内有活跃</div></div>
       <div class="stat"><div class="stat-label">帖子总数</div><div class="stat-value">${allPosts.length}</div><div class="stat-sub">今日新帖 ${todayPosts}</div></div>
       <div class="stat"><div class="stat-label">评论总数</div><div class="stat-value">${allComments.length}</div><div class="stat-sub">总点赞 ${allPosts.reduce((s,p)=>s+(p.likes||0),0)}</div></div>
-      <div class="stat"><div class="stat-label">管理员</div><div class="stat-value" style="color:var(--accent-light);">${allUsers.filter(x=>x.is_admin===true||ADMIN_USERS.includes((x.lname||'').toLowerCase())).length}</div><div class="stat-sub">含本地名单</div></div>
+      <div class="stat"><div class="stat-label">管理员</div><div class="stat-value" style="color:var(--accent-light);">${allUsers.filter(x=>x.is_admin===true).length}</div><div class="stat-sub">以云端 is_admin 为准</div></div>
       <div class="stat"><div class="stat-label">封禁用户</div><div class="stat-value" style="color:${allUsers.some(x=>x.banned===true)?'var(--red)':'var(--text-secondary)'};">${allUsers.filter(x=>x.banned===true).length}</div><div class="stat-sub">${hasBanned?'':'数据库未升级'}</div></div>
       <div class="stat" style="grid-column:span 2;">
         <div class="stat-label">☁️ 云端连接状态 <button class="btn btn-small btn-ghost" style="padding:2px 10px;font-size:11px;float:right;" onclick="admCloudCheck()">测试连接</button></div>
@@ -326,7 +333,7 @@ function renderUsers() {
   });
   if (!list.length) return '<div class="card"><div class="empty">没有匹配的用户</div></div>';
   return `<div class="card">${list.map((u,i)=>{
-    const isAdm = u.is_admin === true || ADMIN_USERS.includes((u.lname||'').toLowerCase());
+    const isAdm = u.is_admin === true; // 以云端 is_admin 为准，不设本地名单
     const isBan = u.banned === true;
     const st = userStats(u);
     const tag = isAdm ? '<span class="tag tag-admin">管理员</span>' : (isBan ? '<span class="tag tag-ban">已封禁</span>' : '<span class="tag tag-user">用户</span>');
@@ -395,7 +402,7 @@ async function setAdmin(lname, v) {
   if (!hasAdmin) { toast('数据库未升级，无法设置管理员（见页面顶部提示）'); return; }
   if (!confirm(v ? '确认将「' + lname + '」设为管理员？' : '确认取消「' + lname + '」的管理员身份？')) return;
   try {
-    const r = await adminRpc('admin_set_admin', { p_lname: lname, p_admin: v, p_secret: ADMIN_SECRET });
+    const r = await adminRpc('admin_set_admin', { p_lname: lname, p_admin: v, p_secret: getAdminSecret() });
     toast(r && r.ok ? (v ? '已设为管理员' : '已取消管理员') : '操作失败：账号不存在');
   } catch(e) { toast('操作失败：' + e.message); }
   loadAll();
@@ -404,7 +411,7 @@ async function setBan(lname, v) {
   if (!hasBanned) { toast('数据库未升级，无法封禁（见页面顶部提示）'); return; }
   if (!confirm(v ? '确认封禁「' + lname + '」？封禁后该账号无法登录。' : '确认解封「' + lname + '」？')) return;
   try {
-    const r = await adminRpc('admin_set_banned', { p_lname: lname, p_banned: v, p_secret: ADMIN_SECRET });
+    const r = await adminRpc('admin_set_banned', { p_lname: lname, p_banned: v, p_secret: getAdminSecret() });
     toast(r && r.ok ? (v ? '已封禁' : '已解封') : '操作失败：账号不存在');
   } catch(e) { toast('操作失败：' + e.message); }
   loadAll();
@@ -412,10 +419,10 @@ async function setBan(lname, v) {
 async function delUser(name, lname) {
   if (!confirm('确认删除用户「' + name + '」？\n该用户的所有帖子、评论也会一并删除，且无法恢复！')) return;
   try {
-    const r = await adminRpc('admin_delete_user', { p_lname: lname, p_secret: ADMIN_SECRET });
+    const r = await adminRpc('admin_delete_user', { p_lname: lname, p_secret: getAdminSecret() });
     if (!r || !r.ok) { toast('删除失败：账号不存在'); loadAll(); return; }
     // 连带删除该用户的帖子/评论/在线记录（RPC）
-    try { await adminRpc('admin_delete_user_content', { p_lname: lname, p_name: name, p_secret: ADMIN_SECRET }); } catch(e) {}
+    try { await adminRpc('admin_delete_user_content', { p_lname: lname, p_name: name, p_secret: getAdminSecret() }); } catch(e) {}
     toast('用户已删除');
   } catch(e) { toast('删除失败：' + e.message); }
   loadAll();
@@ -423,7 +430,7 @@ async function delUser(name, lname) {
 async function delPost(id, title) {
   if (!confirm('确认删除帖子「' + title + '」？\n该帖下的评论也会一并删除。')) return;
   try {
-    const r = await adminRpc('admin_delete_post', { p_id: Number(id), p_secret: ADMIN_SECRET });
+    const r = await adminRpc('admin_delete_post', { p_id: Number(id), p_secret: getAdminSecret() });
     toast(r && r.ok ? '帖子已删除' : '删除失败：帖子不存在');
   } catch(e) { toast('删除失败：' + e.message); }
   loadAll();
@@ -431,7 +438,7 @@ async function delPost(id, title) {
 async function delComment(id) {
   if (!confirm('确认删除这条评论？')) return;
   try {
-    const r = await adminRpc('admin_delete_comment', { p_id: Number(id), p_secret: ADMIN_SECRET });
+    const r = await adminRpc('admin_delete_comment', { p_id: Number(id), p_secret: getAdminSecret() });
     toast(r && r.ok ? '评论已删除' : '删除失败：评论不存在');
   } catch(e) { toast('删除失败：' + e.message); }
   loadAll();
