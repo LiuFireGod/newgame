@@ -196,6 +196,16 @@
     margin-bottom: 14px;
     line-height: 1.6;
   }
+  .post-image {
+    display: block;
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 12px;
+    margin-bottom: 14px;
+    cursor: zoom-in;
+    object-fit: contain;
+    background: var(--bg-secondary);
+  }
   .post-footer {
     display: flex; align-items: center; gap: 20px;
     font-size: 13px;
@@ -961,15 +971,12 @@
     <h2 style="text-align:left;font-size:18px;">发布新帖</h2>
     <div class="sub" style="text-align:left;margin-bottom:16px;">分享你的游戏心得</div>
     <div class="form-group">
-      <label>选择游戏</label>
-      <select id="postGame" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text-primary);font-size:14px;outline:none;">
-        <option value="愚公移山">愚公移山</option>
-        <option value="游戏2">游戏2</option>
-        <option value="游戏3">游戏3</option>
-        <option value="游戏4">游戏4</option>
-        <option value="游戏5">游戏5</option>
-        <option value="游戏6">游戏6</option>
-      </select>
+      <label>图片（可选）</label>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label class="ig-shop-btn" style="background:#6c5ce7;color:#fff;cursor:pointer;display:inline-block;">📷 上传图片<input type="file" id="postImageInput" accept="image/*" style="display:none;" onchange="postPickImage(this)"></label>
+        <button class="ig-shop-btn" style="background:#e74c3c;color:#fff;display:none;" id="postImageRemove" onclick="postRemoveImage()">移除图片</button>
+      </div>
+      <img id="postImagePreview" style="display:none;margin-top:10px;max-width:100%;max-height:240px;border-radius:10px;object-fit:contain;">
     </div>
     <div class="form-group">
       <label>标题</label>
@@ -1298,6 +1305,17 @@ function openProfile() {
   document.getElementById('pfNameInput').value = currentUser.name || '';
   document.getElementById('pfAccount').value = currentUser.lname || currentUser.name.toLowerCase();
   document.getElementById('pfUid').textContent = currentUser.uid || '待分配';
+  // uid 缺失时实时从云端补齐（页面刚打开时资料同步可能尚未完成）
+  if (!currentUser.uid && currentUser.lname) {
+    cloudGetUser(currentUser.lname).then(row => {
+      if (row && row.uid && currentUser) {
+        currentUser.uid = row.uid;
+        setCurrentUser(currentUser);
+        const el = document.getElementById('pfUid');
+        if (el) el.textContent = row.uid;
+      }
+    });
+  }
   document.getElementById('pfBio').value = currentUser.bio || '';
   document.getElementById('pfAvatarPicker').style.display = 'none';
   pfRenderColors();
@@ -1439,6 +1457,7 @@ async function savePostToCloud(p) {
     game: p.game,
     title: p.title,
     content: p.excerpt,
+    image: p.image || null,
     likes: 0,
     created_at: new Date().toISOString()
   };
@@ -1446,7 +1465,7 @@ async function savePostToCloud(p) {
   try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
   renderPosts();
   try {
-    await supabaseRest('POST', 'posts', '', { user_name: p.user, lname: p.lname || null, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, likes: 0 });
+    await supabaseRest('POST', 'posts', '', { user_name: p.user, lname: p.lname || null, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, image: p.image || null, likes: 0 });
     showToast('已发布并同步到云端');
     loadPosts();
   } catch(e) {
@@ -1458,24 +1477,45 @@ function onPostClick() {
   if (!currentUser) { showToast('请先登录后再发帖'); openAuth(); return; }
   document.getElementById('postModal').classList.add('show');
 }
+let postImageData = null; // 发帖配图（base64）
+function postPickImage(input) {
+  const f = input && input.files && input.files[0];
+  if (!f) return;
+  if (f.size > 2 * 1024 * 1024) { showToast('图片过大，请选择 2MB 以内的图片'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    postImageData = e.target.result;
+    document.getElementById('postImagePreview').src = postImageData;
+    document.getElementById('postImagePreview').style.display = 'block';
+    document.getElementById('postImageRemove').style.display = 'inline-block';
+  };
+  reader.readAsDataURL(f);
+}
+function postRemoveImage() {
+  postImageData = null;
+  document.getElementById('postImagePreview').style.display = 'none';
+  document.getElementById('postImageRemove').style.display = 'none';
+  document.getElementById('postImageInput').value = '';
+}
 function closePost() {
   document.getElementById('postModal').classList.remove('show');
   document.getElementById('postTitle').value = '';
   document.getElementById('postContent').value = '';
+  postRemoveImage();
 }
 async function submitPost() {
   const title = document.getElementById('postTitle').value.trim();
   const content = document.getElementById('postContent').value.trim();
-  const game = document.getElementById('postGame').value;
   if (!title) { showToast('请输入标题'); return; }
   if (!content) { showToast('请输入内容'); return; }
   await savePostToCloud({
     user: currentUser.name,
     lname: currentUser.lname || currentUser.name,
     avatarColor: currentUser.avatarColor || '#6c5ce7',
-    game: game,
+    game: '全部', // 不再选择游戏，统一发到「全部」
     title: title,
-    excerpt: content
+    excerpt: content,
+    image: postImageData
   });
   closePost();
   showToast('发布成功');
@@ -1552,20 +1592,35 @@ if (currentUser) {
   refreshCloudPerms(); // 云端复核真实权限（管理员/封禁），防本地伪造
 }
 
-// ===== 权限云端复核 =====
+// ===== 权限云端复核 + 资料同步 =====
 async function refreshCloudPerms() {
   if (!currentUser) return;
   const lname = currentUser.lname || currentUser.name.toLowerCase();
   let cloud = null;
   try {
-    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin,banned&limit=1');
+    const rows = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(lname) + '&select=is_admin,banned,name,bio,avatar_color,avatar_img,uid&limit=1');
     cloud = rows && rows[0] ? rows[0] : null;
   } catch(e) { /* 云端不可用：is_admin 回退硬编码名单 */ }
   if (cloud) {
     // 硬编码名单永远优先（asd1316947244 无论云端字段如何都是管理员），云端值作补充
     currentUser.is_admin = ADMIN_USERS.includes(lname) || cloud.is_admin === true;
     currentUser.banned = cloud.banned === true;
-    setCurrentUser(currentUser); // 写回真实值，覆盖伪造快照
+    // 云端资料同步：名称/简介/头像/UID 以云端为准，保证手机与 PC 显示一致
+    if (cloud.name) currentUser.name = cloud.name;
+    if (cloud.bio !== undefined && cloud.bio !== null) currentUser.bio = cloud.bio;
+    if (cloud.avatar_color) { currentUser.avatar_color = cloud.avatar_color; currentUser.avatarColor = cloud.avatar_color; }
+    if (cloud.avatar_img !== undefined && cloud.avatar_img !== null) currentUser.avatar_img = cloud.avatar_img;
+    if (cloud.uid) currentUser.uid = cloud.uid;
+    setCurrentUser(currentUser); // 写回真实值，覆盖伪造/过期快照
+    // 同步本地用户列表（保持离线兜底与云端一致）
+    try {
+      const users = getUsers();
+      const idx = users.findIndex(x => x.lname === lname);
+      const synced = { name: currentUser.name, lname: lname, hash: currentUser.hash, avatar_color: currentUser.avatar_color, bio: currentUser.bio || '', avatar_img: currentUser.avatar_img || null, uid: currentUser.uid || '' };
+      if (idx >= 0) users[idx] = Object.assign({}, users[idx], synced);
+      else users.push(synced);
+      saveUsers(users);
+    } catch(e) {}
   } else {
     currentUser.is_admin = ADMIN_USERS.includes(lname);
   }
@@ -1627,6 +1682,7 @@ function renderPosts() {
       </div>
       <div class="post-title">${p.title}</div>
       <div class="post-excerpt">${excerpt}</div>
+      ${p.image ? `<img class="post-image" src="${p.image}" onclick="event.stopPropagation(); window.open('${p.image}','_blank')" alt="帖子图片">` : ''}
       <div class="post-footer">
         <div class="post-action ${liked ? 'liked' : ''}" onclick="event.stopPropagation(); toggleLike(this, ${pid ? `'${pid}'` : 'null'})">
           <svg viewBox="0 0 24 24" fill="${liked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
@@ -2506,8 +2562,7 @@ async function openPlayerProfile(acct) {
   if (rk) rk.classList.remove('show');
   const body = document.getElementById('profileBody');
   body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
-  // 云端资料（users 表）
-  let info = { name: acct, bio: '', avatar_color: '#6c5ce7', avatar_img: '' };
+  // 云端资料（users 表）为权威，本地不覆盖（改名等改动以云端为准，保证多端一致）
   try {
     const us = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(acct) + '&limit=1');
     if (us && us[0]) { info = Object.assign(info, us[0]); if (!info.name) info.name = acct; }
@@ -2515,16 +2570,6 @@ async function openPlayerProfile(acct) {
     body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>';
     return;
   }
-  // 本地资料补充（改名后云端未同步时显示最新名称/简介/头像）
-  try {
-    const lu = getUsers().find(x => x.lname === acct);
-    if (lu) {
-      if (lu.name) info.name = lu.name;
-      if (lu.bio) info.bio = lu.bio;
-      if (lu.avatar_color) info.avatar_color = lu.avatar_color;
-      if (lu.avatar_img) info.avatar_img = lu.avatar_img;
-    }
-  } catch(e) {}
   // 云端战绩（game_saves）
   let stats = { soil: 0, coins: 0, boss: 0, progress: 0, realm: 0, realmName: '炼气' };
   try {
@@ -2804,10 +2849,6 @@ async function rankLoad() {
   users = users || [];
   const nameMap = {}, accts = new Set();
   users.forEach(u => { if (u && u.lname) { accts.add(u.lname); if (u.name) nameMap[u.lname] = u.name; } });
-  // 本地已改名的上榜玩家补充显示名（云端 PATCH 未同步时名称仍显示最新，不引入新账号）
-  try {
-    getUsers().forEach(u => { if (u && u.lname && u.name && accts.has(u.lname)) nameMap[u.lname] = u.name; });
-  } catch(e) {}
   // 2) 云端存档
   let rows = [];
   try { rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&limit=1000'); }
