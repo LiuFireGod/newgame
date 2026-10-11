@@ -1036,6 +1036,8 @@ let toastTimer; // 提前声明，避免 showToast 在脚本初始化完成前�
 let cloudPosts = []; // 提前声明，供 init 中 loadPosts/renderPosts 使用（帖子）
 let currentGame = "全部"; // 提前声明，供 init 中 renderPosts 使用
 let likedPosts = new Set(); // 提前声明，供 init 中 renderPosts 使用
+let commentsMap = {}; // 提前声明：init 中 loadComments/renderPosts 会先于本文件靠后的声明执行（TDZ 防护）
+let commentTokenMap = {}; // 提前声明：init 中 loadCommentTokens 会先于本文件靠后的声明执行（TDZ 防护）
 // 管理员判定：只信任云端 is_admin 字段（由服务端 login_check/RPC 返回真实值），
 // 前端不硬编码任何管理员名单，杜绝名单泄露与本地伪造
 function isAdminUser(u) {
@@ -2083,9 +2085,8 @@ function togglePost(card) {
 }
 
 // ===== 评论（云端 comments 表 + 本地兜底，按帖子ID关联） =====
-let commentsMap = {};
+// 注意：commentsMap / commentTokenMap 已在脚本顶部预声明（init 会在靠后的声明执行前就调用加载函数），此处不再重复声明
 // 评论作者操作凭证：token 只存本机（云端 comment_token 列不可读），作者凭它删除自己的评论
-let commentTokenMap = {};
 function loadCommentTokens() { try { commentTokenMap = JSON.parse(localStorage.getItem('gh_comment_tokens') || '{}'); } catch { commentTokenMap = {}; } }
 function saveCommentTokens() { try { localStorage.setItem('gh_comment_tokens', JSON.stringify(commentTokenMap)); } catch {} }
 function getCommentToken(cid) { return cid != null ? (commentTokenMap[String(cid)] || null) : null; }
@@ -3025,7 +3026,7 @@ async function openPlayerProfile(acct) {
   // 云端战绩（game_saves）
   let stats = { soil: 0, coins: 0, boss: 0, progress: 0, realm: 0, realmName: '炼气' };
   try {
-    const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(acct) + '&limit=1');
+    const rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&user_name=eq.' + encodeURIComponent(acct) + '&limit=1');
     if (rows && rows[0]) {
       let sd = rows[0].save_data;
       if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch(e) { sd = null; } }
@@ -3416,7 +3417,7 @@ async function igLoad() {
   // 从云端拉取最新存档（跨设备同步）
   if (currentUser) {
     try {
-      const rows = await supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent(currentUser.lname || currentUser.name) + '&limit=1');
+      const rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&user_name=eq.' + encodeURIComponent(currentUser.lname || currentUser.name) + '&limit=1');
       if (rows && rows[0] && rows[0].save_data) {
         igState = Object.assign(igState, rows[0].save_data);
         if (!igState.mountains) igState.mountains = {};

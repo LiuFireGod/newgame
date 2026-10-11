@@ -922,7 +922,7 @@ function cloudSave() {
 }
 function cloudLoad(cb) {
   if (!tdLname() || typeof supabaseRest === 'undefined') { if (cb) cb(); return; }
-  supabaseRest('GET', 'game_saves', 'user_name=eq.' + encodeURIComponent('td_' + tdLname()) + '&limit=1')
+  supabaseRest('GET', 'game_saves', 'select=user_name,save_data&user_name=eq.' + encodeURIComponent('td_' + tdLname()) + '&limit=1')
     .then(function (rows) {
       if (rows && rows[0] && rows[0].save_data) {
         var d = rows[0].save_data;

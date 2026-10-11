@@ -758,3 +758,39 @@ FOR EACH ROW EXECUTE FUNCTION protect_admin_fields_insert();
 1. 先把 I.1 里的 `<在此填入新密钥>` 替换为你在安全处生成的新密钥（32 位随机十六进制，不要写回本文件）。
 2. SQL Editor → New query → 粘贴整段（I.1 到 I.8）→ Run。
 3. 用新密钥打开管理后台验证；社区页重新登录一次（签发令牌），之后点赞/在线/切换账号恢复正常。
+
+### J. 部署后功能失效修复（2026-10-11，GitHub Pages 上线后发现）
+
+**背景**：I 段迁移上线后出现两类数据库层故障——
+1. `set_online` 心跳报 409：`online_users` 主键为 `user_name`，历史遗留行以显示名作 `user_name` 且 `lname` 为空；心跳 UPDATE 想改写另一行的 `user_name` 时撞主键。
+2. `game_saves` 读取报 401：前端 `select=*` 请求了未授权列（`save_token` 等）；**该问题由前端修复**（三个 `game_saves` 查询补 `select=user_name,save_data`：index.html 两处 + td-game.js 一处），无需 SQL。
+
+本段 SQL 只需执行下面的 `set_online` 重定义 + 一次性清理：
+
+```sql
+-- J.1 在线心跳自愈：合并历史遗留重复在线行（旧格式曾以显示名作主键且 lname 为空），
+--     并给 INSERT 加 ON CONFLICT，杜绝主键冲突 409
+CREATE OR REPLACE FUNCTION public.set_online(p_user_name text, p_lname text, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.online_users%ROWTYPE; new_token text;
+BEGIN
+  DELETE FROM public.online_users WHERE user_name = p_user_name AND lname IS DISTINCT FROM p_lname;
+  SELECT * INTO r FROM public.online_users WHERE lname = p_lname OR user_name = p_lname LIMIT 1;
+  IF FOUND THEN
+    new_token := COALESCE(r.token, 'o' || substr(md5(random()::text || clock_timestamp()::text), 1, 20));
+    UPDATE public.online_users SET last_seen = now(), token = new_token, user_name = p_user_name, lname = p_lname
+    WHERE lname = p_lname OR user_name = p_lname;
+    RETURN jsonb_build_object('ok', true, 'token', new_token);
+  END IF;
+  new_token := 'o' || substr(md5(random()::text || clock_timestamp()::text), 1, 20);
+  INSERT INTO public.online_users(user_name, lname, last_seen, token) VALUES (p_user_name, p_lname, now(), new_token)
+  ON CONFLICT (user_name) DO UPDATE SET last_seen = now(), token = EXCLUDED.token, lname = EXCLUDED.lname;
+  RETURN jsonb_build_object('ok', true, 'token', new_token);
+END $$;
+
+-- J.2 一次性清理：删除历史遗留（lname 为空）与已过期（>10 分钟无心跳）的在线行
+DELETE FROM public.online_users WHERE lname IS NULL OR last_seen < now() - interval '10 minutes';
+```
+
+**验证**：`select public.set_online('asdyourgod','asd1316947244','otest');` 应返回 `{"ok": true, "token": ...}`（修复前为 409）。
+
