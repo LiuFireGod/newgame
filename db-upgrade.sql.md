@@ -348,3 +348,27 @@ GRANT EXECUTE ON FUNCTION public.save_game(text,text,jsonb) TO anon, authenticat
 REVOKE SELECT ON public.game_saves FROM anon, authenticated;
 GRANT SELECT (user_name, save_data) ON public.game_saves TO anon, authenticated;
 ```
+
+---
+
+## H. get_login_salt 补建（2026-10-11 修复登录）
+
+**背景**：新版前端登录/改密依赖 `get_login_salt` RPC 读取账号的 PBKDF2 盐来重算哈希，但 A–G 各批 SQL 均未定义该函数，导致密码登录在取盐步骤直接失败（提示"注册/登录失败，请重试"）。**必须在 Supabase 控制台执行以下 SQL 后，密码登录才能恢复。**
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_login_salt(p_lname text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE u public.users%ROWTYPE; parts text[];
+BEGIN
+  SELECT * INTO u FROM public.users WHERE lname = p_lname LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('found', false); END IF;
+  parts := string_to_array(u.password_hash, '$');
+  IF array_length(parts, 1) = 4 AND parts[1] = 'pbkdf2' AND parts[2] ~ '^\d+$' THEN
+    RETURN jsonb_build_object('found', true, 'pbkdf2', true, 'salt', parts[3], 'iter', parts[2]::int);
+  END IF;
+  RETURN jsonb_build_object('found', true, 'pbkdf2', false);
+END $$;
+GRANT EXECUTE ON FUNCTION public.get_login_salt(text) TO anon, authenticated;
+```
+
+> 说明：旧账号（password_hash 为旧 djb2 格式）执行后返回 `pbkdf2:false`，登录时走 login_check 的 legacy 兼容分支并自动迁移；新账号（pbkdf2 格式）返回库中盐，前端重算后等值匹配。两种情况均可恢复登录。

@@ -201,7 +201,7 @@ var G = {
   resultStars: 0, resultScore: 0, resultWave: 0
 };
 
-var SAVE = { game:'td', stars:[0,0,0], bestWave:[0,0,0], bestScore:[0,0,0], coins:0, talents:{income:0,dmg:0,spd:0,slow:0,boss:0}, totalKills:0, unlocked:1 };
+var SAVE = { game:'td', stars:[0,0,0], bestWave:[0,0,0], bestScore:[0,0,0], coins:0, talents:{income:0,dmg:0,spd:0,slow:0,boss:0}, totalKills:0, unlocked:1, runs:{} };
 
 /* ================= 工具 ================= */
 function tdfmt(n) { return n >= 100000 ? (n/10000).toFixed(1) + '万' : String(Math.floor(n)); }
@@ -277,22 +277,51 @@ function startLevel(id) {
   var lv = LEVELS.find(function (l) { return l.id === id; });
   if (!lv) return;
   if (id > SAVE.unlocked) { tdToast('请先通关上一关'); SFX.error(); return; }
+  if (hasRun(id)) { askContinue(id); return; }
+  beginLevel(id);
+}
+function beginLevel(id) {
+  var lv = LEVELS.find(function (l) { return l.id === id; });
+  if (!lv) return;
   G.lv = lv;
   resetLevel();
   showHud();
   showCanvasOverlay('levelReady');
   SFX.click();
 }
+function askContinue(id) {
+  var r = SAVE.runs[id];
+  if (!r) { beginLevel(id); return; }
+  var lv = LEVELS.find(function (l) { return l.id === id; });
+  var m = showModal('tdCtnModal');
+  m.innerHTML = '<h3>⏳ 未完成的护宗战斗</h3>' +
+    '<div class="sub">上次进度：第 ' + (r.waveIdx + 1) + ' / ' + lv.waves.length + ' 波 · 灵石 ' + tdfmt(r.coins) + ' · 阵法 ' + (r.towers || []).length + ' 座</div>' +
+    '<div style="display:flex;gap:10px;justify-content:center;margin-top:12px;">' +
+    '<button class="td-btn" id="tdCtnYes">▶ 继续战斗</button>' +
+    '<button class="td-btn" id="tdCtnNo" style="background:#2a2f42;border:1px solid var(--td-border);color:#eef0f5;">重新开始</button></div>';
+  document.getElementById('tdCtnYes').onclick = function () {
+    closeModal('tdCtnModal');
+    restoreRun(id);
+  };
+  document.getElementById('tdCtnNo').onclick = function () {
+    closeModal('tdCtnModal');
+    clearRun(id);
+    saveProgress();
+    beginLevel(id);
+  };
+}
 function startWave() {
-  if (G.waveState !== 'idle' && G.waveState !== 'fighting') return;
-  if (G.waveIdx >= G.lv.waves.length - 1) return;
-  G.waveIdx++;
+  if (G.waveState !== 'idle') return;
+  // 续战场景：最后一波已是 idle（上次打到最后一波）→ 重打该波；否则推进到下一波
+  if (G.waveIdx < G.lv.waves.length - 1) G.waveIdx++;
   var w = G.lv.waves[G.waveIdx];
   G.spawnQueue = [];
   for (var i = 0; i < w.n; i++) G.spawnQueue.push({ t: w.t, hpMul: w.hp, spdMul: w.spd, coin: w.c, at: i * w.i });
   G.spawnTimer = 0;
   G.waveState = 'spawning';
   G.running = true;
+  snapshotRun();
+  saveProgress();
   SFX.wave();
   updateHud();
 }
@@ -336,6 +365,8 @@ function placeTower(id, gx, gy) {
   SFX.place();
   G.placing = null;
   updateHud();
+  snapshotRun();
+  saveProgress();
 }
 function upgradeTower(t) {
   if (t.lv >= 3) { tdToast('已达最高等级'); return; }
@@ -345,6 +376,8 @@ function upgradeTower(t) {
   G.fxs.push({ type: 'ring', x: t.x, y: t.y, t: 0, dur: 0.5, col: '#f1c40f' });
   SFX.upgrade();
   updateHud(); renderInspect();
+  snapshotRun();
+  saveProgress();
 }
 function sellTower(t) {
   var cfg = TOWERS.find(function (x) { return x.id === t.id; });
@@ -355,6 +388,8 @@ function sellTower(t) {
   SFX.sell();
   tdToast('出售获得 ' + back + ' 灵石');
   updateHud();
+  snapshotRun();
+  saveProgress();
 }
 function useItem(id) {
   if (G.waveState !== 'spawning' && G.waveState !== 'fighting') return;
@@ -362,8 +397,7 @@ function useItem(id) {
   if (!it || G.coins < it.cost) { tdToast('灵石不足'); SFX.error(); return; }
   G.coins -= it.cost;
   if (id === 'freeze') {
-    G.freezeUntil = G.time + 3;
-    G.fxs.push({ type: 'snow', t: 0, dur: 3 });
+    G.freezeUntil = G.time + 3;    G.fxs.push({ type: 'snow', t: 0, dur: 3 });
     SFX.freeze();
     tdToast('定身符生效：妖怪定身 3 秒');
   } else if (id === 'storm') {
@@ -377,6 +411,8 @@ function useItem(id) {
     tdToast('灵石雨：+150 灵石');
   }
   updateHud();
+  snapshotRun();
+  saveProgress();
 }
 function damageMonster(m, dmg, tower, col) {
   if (m.dead) return;
@@ -509,6 +545,8 @@ function waveCleared() {
   G.coins += bonus;
   G.fxs.push({ type: 'text', x: CW / 2, y: 90, t: 0, dur: 1.2, text: '第 ' + (G.waveIdx + 1) + ' 波击退！灵石 +' + bonus, col: '#00b894' });
   SFX.coin();
+  snapshotRun();
+  saveProgress();
   updateHud();
 }
 function winLevel() {
@@ -523,6 +561,9 @@ function winLevel() {
   if (score > SAVE.bestScore[idx]) { SAVE.bestScore[idx] = score; newBest = true; }
   if (G.lv.id >= SAVE.unlocked && G.lv.id < LEVELS.length) { SAVE.unlocked = G.lv.id + 1; }
   G.resultStars = stars; G.resultScore = score; G.resultWave = G.waveCleared;
+  // 通关：本局灵石全部转为永久灵石（可买天赋），并清除本关续战快照
+  SAVE.coins += G.coins;
+  clearRun(G.lv.id);
   SFX.win();
   saveLocal();
   cloudSave();
@@ -531,7 +572,12 @@ function winLevel() {
 function loseLevel() {
   if (G.waveState === 'lose') return;
   G.waveState = 'lose'; G.running = false;
+  // 失败：本局灵石折半保留为永久灵石（鼓励重试而非归零），清除续战快照
+  SAVE.coins += Math.floor(G.coins * 0.5);
+  clearRun(G.lv.id);
   SFX.lose();
+  saveLocal();
+  cloudSave();
   showCanvasOverlay('lose');
 }
 
@@ -776,11 +822,19 @@ function loop(ts) {
     update(raw * G.speed);
   }
   render();
+  // 云端续战：战斗进行中每 5 秒自动保存快照（本地 + 云端）
+  if (G.lv && G.waveIdx >= 0 && G.waveState !== 'win' && G.waveState !== 'lose') {
+    if (!G._autot || G._autot <= G.time) {
+      G._autot = G.time + 5;
+      snapshotRun();
+      saveProgress();
+    }
+  }
 }
 function startLoop() { if (!G.raf) { G.lastTs = 0; G.raf = requestAnimationFrame(loop); } }
 
 /* ================= 存档（本地 + 云端） ================= */
-function saveKey() { var l = tdLname(); return l ? 'gh_td_save_' + l : null; }
+function saveKey() { var l = tdLname(); return l ? 'gh_td_save_' + l : 'gh_td_save_guest'; }
 function saveLocal() {
   var k = saveKey(); if (!k) return;
   try { localStorage.setItem(k, JSON.stringify(SAVE)); } catch (e) {}
@@ -804,6 +858,56 @@ function mergeSave(d) {
   if (typeof d.totalKills === 'number' && d.totalKills > SAVE.totalKills) SAVE.totalKills = d.totalKills;
   if (typeof d.unlocked === 'number' && d.unlocked > SAVE.unlocked) SAVE.unlocked = Math.min(d.unlocked, LEVELS.length);
   if (d.talents) Object.keys(d.talents).forEach(function (k) { if (typeof d.talents[k] === 'number' && d.talents[k] > (SAVE.talents[k] || 0)) SAVE.talents[k] = d.talents[k]; });
+  // 续战快照：取"最新"（ts 最大），不做取大合并
+  if (d.runs) Object.keys(d.runs).forEach(function (k) {
+    if (d.runs[k] && (!SAVE.runs[k] || d.runs[k].ts > SAVE.runs[k].ts)) SAVE.runs[k] = d.runs[k];
+  });
+}
+function snapshotRun() {
+  if (!G.lv || G.waveIdx < 0 || G.waveState === 'win' || G.waveState === 'lose') return;
+  SAVE.runs[G.lv.id] = {
+    waveIdx: G.waveIdx, hp: G.hp, coins: G.coins, kills: G.kills,
+    towers: G.towers.map(function (t) { return { id: t.id, gx: t.gx, gy: t.gy, lv: t.lv }; }),
+    ts: Date.now()
+  };
+}
+function clearRun(id) { if (id) delete SAVE.runs[id]; }
+function hasRun(id) { return !!(SAVE.runs && SAVE.runs[id]); }
+function restoreRun(id) {
+  var r = SAVE.runs[id]; if (!r) return false;
+  var lv = LEVELS.find(function (l) { return l.id === id; });
+  if (!lv) return false;
+  G.lv = lv;
+  resetLevel();
+  G.waveIdx = r.waveIdx;
+  G.hp = r.hp; G.coins = r.coins; G.kills = r.kills;
+  (r.towers || []).forEach(function (t) {
+    var c = px(t.gx, t.gy);
+    var cfg = TOWERS.find(function (x) { return x.id === t.id; });
+    if (cfg) G.towers.push({ id: t.id, gx: t.gx, gy: t.gy, x: c.x, y: c.y, lv: t.lv || 1, cd: 0, target: null, dead: false });
+  });
+  G.waveState = 'idle'; // 恢复为波间待命，由玩家点击"开始下一波"继续
+  G.running = false;
+  showHud();
+  tdToast('已恢复进度：第 ' + (r.waveIdx + 1) + ' 波 · 阵法 ' + (r.towers || []).length + ' 座');
+  return true;
+}
+function saveProgress() { saveLocal(); cloudSave(); }
+/* 登录后：把未登录期间的本机访客存档并入账号，并拉取云端（账号优先保留最强值） */
+function mergeGuest() {
+  try {
+    var g = localStorage.getItem('gh_td_save_guest');
+    if (g) {
+      var d = JSON.parse(g);
+      if (d && d.game === 'td') {
+        mergeSave(d);
+        saveLocal();
+      }
+      localStorage.removeItem('gh_td_save_guest');
+    }
+    cloudSave();
+    cloudLoad(function () { saveLocal(); if (G.view) updateHud(); });
+  } catch (e) {}
 }
 function tdSaveToken() { try { return localStorage.getItem('gh_td_token_' + tdLname()) || ''; } catch (e) { return ''; } }
 function tdSetSaveToken(t) { try { if (t) localStorage.setItem('gh_td_token_' + tdLname(), t); } catch (e) {} }
@@ -834,6 +938,10 @@ function cloudLoad(cb) {
 function openRank() {
   SFX.click();
   var m = showModal('tdRankModal');
+  if (!tdLname()) {
+    m.innerHTML = '<h3>🏆 护宗全服榜</h3><div class="sub">需要先登录账号，才能查看和使用云端排行榜</div>';
+    return;
+  }
   m.innerHTML = '<h3>🏆 护宗全服榜</h3><div class="sub">按总分排名（每关得分 = 击杀×10 + 波数×50 + 星级×150）</div><div style="max-height:46vh;overflow-y:auto;" id="tdRankList"><div class="sub">加载中…</div></div>';
   var list = m.querySelector('#tdRankList');
   var meL = 'td_' + tdLname();
@@ -964,11 +1072,12 @@ function openLevelSelect() {
     LEVELS.map(function (l, i) {
       var locked = l.id > SAVE.unlocked;
       var stars = '';
+      var cont = hasRun(l.id) ? ' · ▶ 续战第 ' + (SAVE.runs[l.id].waveIdx + 1) + ' 波' : '';
       for (var s = 0; s < 3; s++) stars += (s < (SAVE.stars[i] || 0) ? '⭐' : '☆');
       return '<div class="td-lv-card' + (locked ? ' lock' : '') + '" data-lv="' + l.id + '">' +
         '<div class="lv-name">' + (locked ? '🔒 ' : '') + esc(l.name) + '</div>' +
         '<div class="lv-meta">' + esc(l.desc) + '</div>' +
-        '<div class="lv-meta">共 ' + l.waves.length + ' 波 · 最高波次 ' + (SAVE.bestWave[i] || 0) + '</div>' +
+        '<div class="lv-meta">共 ' + l.waves.length + ' 波 · 最高波次 ' + (SAVE.bestWave[i] || 0) + cont + '</div>' +
         '<div class="stars">' + stars + '</div></div>';
     }).join('') +
     '</div>';
@@ -1045,9 +1154,9 @@ function updateHud() {
   if (pb) pb.textContent = G.paused ? '▶' : '⏸';
   var nb = document.getElementById('tdNextWaveBtn');
   if (nb) {
-    var show = G.lv && G.waveState === 'idle' && G.waveIdx >= 0 && G.waveIdx < G.lv.waves.length - 1 && !G.paused && !G.inspect;
+    var show = G.lv && G.waveState === 'idle' && G.waveIdx >= 0 && !G.paused && !G.inspect;
     nb.style.display = show ? 'inline-block' : 'none';
-    if (show) nb.textContent = '⚔ 开始第 ' + (G.waveIdx + 2) + ' 波';
+    if (show) nb.textContent = G.waveIdx >= G.lv.waves.length - 1 ? '⚔ 重打第 ' + (G.waveIdx + 1) + ' 波' : '⚔ 开始第 ' + (G.waveIdx + 2) + ' 波';
   }
   renderBar();
 }
@@ -1154,7 +1263,12 @@ function bindEvents() {
   tl.addEventListener('click', function () { openTalents(); });
   var ex = document.getElementById('tdExitBtn');
   ex.addEventListener('click', function () {
-    if (G.running && !confirm('离开后本关进度不保存，确定退出？')) return;
+    // 退出前保存进度（本地 + 云端），之后可"继续上次战斗"
+    if (G.lv && G.waveIdx >= 0 && G.waveState !== 'win' && G.waveState !== 'lose') {
+      snapshotRun();
+      saveProgress();
+      tdToast('进度已云端保存，随时可继续');
+    }
     SFX.click();
     G.running = false; G.paused = false; G.lv = null;
     showCanvasOverlay('menu');
@@ -1207,9 +1321,25 @@ function mount() {
 }
 
 window.TDGame = {
-  start: function () { if (mount()) { SFX.click(); } return !!G.view; },
-  mounted: function () { return !!document.getElementById('tdView') && document.getElementById('tdView').getAttribute('data-td-mounted'); }
+  start: function () {
+    if (mount()) {
+      SFX.click();
+      // 每次进入游戏都重新拉取云端进度（登录状态可能已变化）
+      loadLocal();
+      cloudLoad(function () { saveLocal(); if (G.view) updateHud(); });
+    }
+    return !!G.view;
+  },
+  mounted: function () { return !!document.getElementById('tdView') && document.getElementById('tdView').getAttribute('data-td-mounted'); },
+  /* 登录/切换账号成功后调用：访客本地进度并入账号 + 云端拉取 */
+  onLogin: function () { mergeGuest(); }
 };
+
+/* 关闭页面/刷新前保存进行中的快照（本地即时写入；云端靠 5 秒自动保存兜底） */
+window.addEventListener('beforeunload', function () {
+  snapshotRun();
+  saveLocal();
+});
 
 /* 自动挂载（页面已含 #tdView 时直接初始化，显示与否由主页面控制） */
 if (document.getElementById('tdView')) { mount(); }
