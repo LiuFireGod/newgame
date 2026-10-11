@@ -1020,6 +1020,30 @@ async function supabaseRest(method, table, query, body) {
   if (!r.ok) throw new Error('云端返回 ' + r.status);
   return r.status === 204 ? null : r.json();
 }
+
+// ===== 云端连通性检测（带8秒超时，全局状态供登录/管理员面板复用） =====
+const cloudStatus = { ok: null, latency: null, lastErr: null };
+async function cloudPing() {
+  const t0 = Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/users?select=lname&limit=1', {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    cloudStatus.ok = r.ok;
+    cloudStatus.latency = Date.now() - t0;
+    cloudStatus.lastErr = r.ok ? null : '云端返回 ' + r.status;
+    return r.ok;
+  } catch(e) {
+    cloudStatus.ok = false;
+    cloudStatus.latency = Date.now() - t0;
+    cloudStatus.lastErr = (e && e.name === 'AbortError') ? '连接超时' : (e && e.message ? String(e.message) : '网络错误');
+    return false;
+  }
+}
 (async function init() {
   await loadPosts();
   await loadComments();
@@ -1142,15 +1166,17 @@ async function handleAuth() {
   const hash = simpleHash(p);
 
   try {
-    if (isLoginMode) {
-      let user = await cloudGetUser(lname);
-      if (!user) { const ls = getUsers(); user = ls.find(x => x.lname === lname); }
+    // 登录/注册必须先确认云端连通，云端不可用一律禁止进入
+    const cloudOk = await cloudPing();
+    if (!cloudOk) {
+      showToast('⚠️ 无法连接云端服务器，禁止登录，请检查网络后重试');
+    } else if (isLoginMode) {
+      const user = await cloudGetUser(lname);
       if (!user) { showToast('该用户名不存在，请先注册'); }
       else if (user.password_hash !== hash && user.hash !== hash) { showToast('密码错误，请重新输入'); }
       else if (user.banned === true) { showToast('该账号已被封禁，请联系管理员'); }
       else {
-        const lsLocal = getUsers().find(x => x.lname === lname); // 本地资料优先（名称/头像/简介以最后编辑为准）
-        currentUser = { name: (lsLocal && lsLocal.name) || user.name, lname: user.lname || lname, hash: hash, avatar_color: (lsLocal && lsLocal.avatar_color) || user.avatar_color, avatarColor: (lsLocal && lsLocal.avatar_color) || user.avatar_color, is_admin: user.is_admin, banned: user.banned, bio: (lsLocal && lsLocal.bio) || user.bio, avatar_img: (lsLocal && lsLocal.avatar_img) || user.avatar_img };
+        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color, is_admin: user.is_admin, banned: user.banned, bio: user.bio, avatar_img: user.avatar_img };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1162,24 +1188,27 @@ async function handleAuth() {
         return;
       }
     } else {
-      let exists = await cloudGetUser(lname);
-      if (!exists) { const ls = getUsers(); exists = ls.find(x => x.lname === lname); }
+      const exists = await cloudGetUser(lname);
       if (exists) { showToast('该用户名已被注册'); }
       else {
         const avatarColor = 'hsl(' + Math.floor(Math.random()*360) + ',65%,55%)';
         const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor };
         const ok = await cloudCreateUser(newUser);
-        ensureLocalUser(newUser);
-        currentUser = newUser;
-        setCurrentUser(currentUser);
-        updateNavUser();
-        closeAuth();
-        igState = null;
-        await igLoad();
-        igRender();
-        showToast(ok ? '注册成功，账号已同步云端' : '注册成功（云端暂不可用，已存本机）');
-        cloudHeartbeat(currentUser.name);
-        return;
+        if (!ok) {
+          showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
+        } else {
+          ensureLocalUser(newUser);
+          currentUser = newUser;
+          setCurrentUser(currentUser);
+          updateNavUser();
+          closeAuth();
+          igState = null;
+          await igLoad();
+          igRender();
+          showToast('注册成功，账号已同步云端');
+          cloudHeartbeat(currentUser.name);
+          return;
+        }
       }
     }
   } catch (e) {
@@ -1231,9 +1260,16 @@ function logout() {
 
 // ===== 个人中心（资料编辑） =====
 const PF_COLORS = ['#ff6b81','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#6c5ce7','#a29bfe','#fd79a8','#00b894'];
+let pfSnapshot = null; // 打开编辑弹窗时的资料快照（保存失败时回滚，保证失败不留在本地）
 function openProfile() {
   if (!currentUser) { openAuth(); return; }
   document.getElementById('userMenu').classList.remove('show');
+  pfSnapshot = {
+    name: currentUser.name || '',
+    bio: currentUser.bio || '',
+    avatar_color: currentUser.avatarColor || currentUser.avatar_color || null,
+    avatar_img: currentUser.avatar_img || null
+  };
   pfRenderAvatar();
   document.getElementById('pfNameInput').value = currentUser.name || '';
   document.getElementById('pfAccount').value = currentUser.lname || currentUser.name.toLowerCase();
@@ -1290,9 +1326,35 @@ async function pfSave() {
   if (!name) { showToast('名称不能为空'); return; }
   if (name.length > 16) { showToast('名称最长16个字符'); return; }
   const bio = document.getElementById('pfBio').value.trim().slice(0, 120);
+  // 先提交云端：云端成功才允许落本地，失败完全不保存
+  const candidate = {
+    lname: currentUser.lname,
+    name: name,
+    bio: bio,
+    avatar_color: currentUser.avatarColor || currentUser.avatar_color || null,
+    avatar_img: currentUser.avatar_img || null
+  };
+  const synced = await cloudUpdateProfile(candidate);
+  if (!synced) {
+    // 云端失败：本地数据一律不变，并回滚到打开弹窗时的资料
+    if (pfSnapshot) {
+      currentUser.name = pfSnapshot.name;
+      currentUser.bio = pfSnapshot.bio;
+      currentUser.avatarColor = pfSnapshot.avatar_color;
+      currentUser.avatar_color = pfSnapshot.avatar_color;
+      currentUser.avatar_img = pfSnapshot.avatar_img;
+      document.getElementById('pfNameInput').value = pfSnapshot.name;
+      document.getElementById('pfBio').value = pfSnapshot.bio;
+      pfRenderAvatar();
+      pfRenderColors();
+    }
+    showToast('⚠️ 云端同步失败，本次修改未保存，请检查网络后重试');
+    return; // 弹窗保持打开，可重试
+  }
+  // 云端成功 → 才更新本地内存与缓存
   currentUser.name = name;
   currentUser.bio = bio;
-  // 更新本地用户列表（账号 lname 保持不变）
+  if (currentUser.avatarColor) currentUser.avatar_color = currentUser.avatarColor;
   const users = getUsers();
   const idx = users.findIndex(x => x.lname === currentUser.lname);
   if (idx >= 0) {
@@ -1305,17 +1367,16 @@ async function pfSave() {
   }
   setCurrentUser(currentUser);
   updateNavUser();
-  const synced = await cloudUpdateProfile(currentUser); // 个人中心数据上传云端
   document.getElementById('profileModal').classList.remove('show');
-  showToast(synced ? '✅ 个人资料已保存并同步云端' : '个人资料已保存（云端同步失败，部署后可同步）');
+  showToast('✅ 个人资料已保存并同步云端');
 }
 async function cloudUpdateProfile(u) {
   try {
     await supabaseRest('PATCH', 'users', 'lname=eq.' + encodeURIComponent(u.lname), {
-      name: u.name, avatar_color: u.avatarColor || u.avatar_color, bio: u.bio, avatar_img: u.avatar_img || null
+      name: u.name, avatar_color: u.avatar_color, bio: u.bio, avatar_img: u.avatar_img || null
     });
     return true; // 云端同步成功
-  } catch(e) { return false; } // 云端不同步时本地资料仍生效
+  } catch(e) { return false; } // 云端同步失败（此时本地也不会保存）
 }
 
 // 点击弹窗外部关闭
