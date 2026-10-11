@@ -318,7 +318,7 @@ function renderUsers() {
     return `<div class="row">
       <div class="row-main">
         <div class="row-title"><span class="dot" style="background:${esc(u.avatar_color || '#6c5ce7')};"></span>${esc(u.name)}${tag}</div>
-        <div class="row-meta"><span>注册于 ${fmtTime(u.created_at)}</span><span>${st.posts} 帖</span><span>${st.comments} 评</span>${(onlineNames.has(u.name) || onlineAccts.has(u.lname) || onlineNames.has(u.lname)) ? '<span style="color:var(--green);">在线</span>' : ''}</div>
+        <div class="row-meta"><span>UID ${esc(u.uid || '—')}</span><span>注册于 ${fmtTime(u.created_at)}</span><span>${st.posts} 帖</span><span>${st.comments} 评</span>${(onlineNames.has(u.name) || onlineAccts.has(u.lname) || onlineNames.has(u.lname)) ? '<span style="color:var(--green);">在线</span>' : ''}</div>
       </div>
       <div class="row-actions">
         ${isAdm

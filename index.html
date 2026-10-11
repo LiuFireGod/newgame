@@ -825,6 +825,7 @@
     <div class="form-group">
       <label>账号（登录用，不可修改）</label>
       <input type="text" id="pfAccount" readonly style="opacity:.6;">
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">UID: <span id="pfUid">——</span></div>
     </div>
     <div class="form-group">
       <label>个人简介</label>
@@ -1087,7 +1088,7 @@ function getCurrentUser() {
     if (!real) return null;
     // 安全：is_admin/banned 一律不信任本地快照（可伪造），启动时由 refreshCloudPerms 从云端复核写入；
     // 云端不可用时回退到硬编码 ADMIN_USERS 名单
-    return Object.assign({}, real, { avatarColor: real.avatar_color }, { is_admin: false, banned: false });
+    return Object.assign({}, real, u, { avatarColor: real.avatar_color }, { is_admin: false, banned: false });
   } catch { return null; }
 }
 function setCurrentUser(u) {
@@ -1136,14 +1137,37 @@ async function cloudGetUser(lname) {
     return (rows && rows[0]) || null;
   } catch(e) { return null; }
 }
+// 生成下一个 uid：从 000000 起按注册顺序分配、填补空号保证连续，超过 999999 自动加位
+async function nextUid() {
+  try {
+    const rows = await supabaseRest('GET', 'users', 'select=uid&limit=10000');
+    const used = new Set((rows || []).map(r => String(r.uid)).filter(Boolean));
+    let n = 0;
+    // 找最小未使用的编号（补空洞），保证 uid 连续无缺号
+    while (used.has(String(n).padStart(6, '0'))) n++;
+    return String(n).padStart(6, '0');
+  } catch(e) { return String(Date.now()).slice(-6); }
+}
 async function cloudCreateUser(u) {
-  try { await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color }); return true; }
-  catch(e) { return false; }
+  for (let i = 0; i < 6; i++) {
+    try {
+      await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color, uid: u.uid });
+      return true;
+    } catch(e) {
+      // uid 唯一冲突（并发注册撞号）→ 重新取最小空号再试
+      if (String(e.message).includes('409') || String(e.message).includes('duplicate') || String(e.message).includes('unique')) {
+        u.uid = await nextUid();
+        continue;
+      }
+      return false;
+    }
+  }
+  return false;
 }
 function ensureLocalUser(u) {
   const users = getUsers();
   if (!users.find(x => x.lname === u.lname)) {
-    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null });
+    users.push({ name: u.name, lname: u.lname, hash: u.hash, avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null, uid: u.uid || '' });
     saveUsers(users);
   }
 }
@@ -1176,7 +1200,7 @@ async function handleAuth() {
       else if (user.password_hash !== hash && user.hash !== hash) { showToast('密码错误，请重新输入'); }
       else if (user.banned === true) { showToast('该账号已被封禁，请联系管理员'); }
       else {
-        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color, is_admin: user.is_admin, banned: user.banned, bio: user.bio, avatar_img: user.avatar_img };
+        currentUser = { name: user.name, lname: user.lname || lname, hash: hash, avatar_color: user.avatar_color, avatarColor: user.avatar_color, is_admin: user.is_admin, banned: user.banned, bio: user.bio, avatar_img: user.avatar_img, uid: user.uid };
         setCurrentUser(currentUser);
         ensureLocalUser(currentUser);
         updateNavUser();
@@ -1192,7 +1216,7 @@ async function handleAuth() {
       if (exists) { showToast('该用户名已被注册'); }
       else {
         const avatarColor = 'hsl(' + Math.floor(Math.random()*360) + ',65%,55%)';
-        const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor };
+        const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor, uid: await nextUid() };
         const ok = await cloudCreateUser(newUser);
         if (!ok) {
           showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
@@ -1273,6 +1297,7 @@ function openProfile() {
   pfRenderAvatar();
   document.getElementById('pfNameInput').value = currentUser.name || '';
   document.getElementById('pfAccount').value = currentUser.lname || currentUser.name.toLowerCase();
+  document.getElementById('pfUid').textContent = currentUser.uid || '待分配';
   document.getElementById('pfBio').value = currentUser.bio || '';
   document.getElementById('pfAvatarPicker').style.display = 'none';
   pfRenderColors();
