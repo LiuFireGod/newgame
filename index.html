@@ -1409,6 +1409,7 @@ async function savePostToCloud(p) {
   const localPost = {
     id: 'local_' + Date.now() + Math.floor(Math.random()*1000),
     user_name: p.user,
+    lname: p.lname || '',
     avatar_color: p.avatarColor,
     game: p.game,
     title: p.title,
@@ -1420,7 +1421,7 @@ async function savePostToCloud(p) {
   try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
   renderPosts();
   try {
-    await supabaseRest('POST', 'posts', '', { user_name: p.user, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, likes: 0 });
+    await supabaseRest('POST', 'posts', '', { user_name: p.user, lname: p.lname || null, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, likes: 0 });
     showToast('已发布并同步到云端');
     loadPosts();
   } catch(e) {
@@ -1445,6 +1446,7 @@ async function submitPost() {
   if (!content) { showToast('请输入内容'); return; }
   await savePostToCloud({
     user: currentUser.name,
+    lname: currentUser.lname || currentUser.name,
     avatarColor: currentUser.avatarColor || '#6c5ce7',
     game: game,
     title: title,
@@ -1464,7 +1466,10 @@ function openMyPosts() {
   if (!currentUser) { showToast('请先登录'); openAuth(); return; }
   document.getElementById('userMenu').classList.remove('show');
   const all = getPosts();
-  const my = all.filter(p => (p.user_name || p.user) === currentUser.name);
+  const my = all.filter(p => {
+    if (p.lname) return p.lname === currentUser.lname; // 新数据按账号归属
+    return (p.user_name || p.user) === currentUser.name; // 旧数据按名称兜底
+  });
   const list = document.getElementById('myPostsList');
   if (my.length === 0) {
     list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">你还没有发过帖子</div>';
@@ -1654,11 +1659,11 @@ function getComments(pid) { return (commentsMap && commentsMap[pid]) || []; }
 async function saveComment(pid, text) {
   if (!commentsMap) commentsMap = {};
   if (!commentsMap[pid]) commentsMap[pid] = [];
-  commentsMap[pid].unshift({ user: currentUser ? currentUser.name : '匿名', text: text, time: '刚刚' });
+  commentsMap[pid].unshift({ user: currentUser ? currentUser.name : '匿名', acct: currentUser ? (currentUser.lname || currentUser.name) : '', text: text, time: '刚刚' });
   try { localStorage.setItem('gh_comments_v2', JSON.stringify(commentsMap)); } catch {}
   if (!String(pid).startsWith('local_')) {
     try {
-      await supabaseRest('POST', 'comments', '', { post_id: pid, user_name: currentUser.name, content: text });
+      await supabaseRest('POST', 'comments', '', { post_id: pid, user_name: currentUser.name, lname: currentUser.lname || null, content: text });
     } catch(e) {}
   }
 }

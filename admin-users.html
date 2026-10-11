@@ -399,10 +399,16 @@ async function delUser(name, lname) {
   try {
     const qName = encodeURIComponent(name);
     if (lname) await supabaseRest('DELETE', 'users', 'lname=eq.' + encodeURIComponent(lname));
+    // 帖子/评论按账号删（新数据），再按名称删兜底（旧数据）
+    if (lname) {
+      await supabaseRest('DELETE', 'posts', 'lname=eq.' + encodeURIComponent(lname));
+      await supabaseRest('DELETE', 'comments', 'lname=eq.' + encodeURIComponent(lname));
+    }
     await supabaseRest('DELETE', 'posts', 'user_name=eq.' + qName);
     await supabaseRest('DELETE', 'comments', 'user_name=eq.' + qName);
     // 在线记录一并清除
     try { await supabaseRest('DELETE', 'online_users', 'user_name=eq.' + qName); } catch(e) {}
+    try { if (lname) await supabaseRest('DELETE', 'online_users', 'lname=eq.' + encodeURIComponent(lname)); } catch(e) {}
     toast('用户已删除');
   } catch(e) { toast('删除失败：' + e.message); }
   loadAll();
