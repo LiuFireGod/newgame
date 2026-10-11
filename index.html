@@ -1027,6 +1027,8 @@ let sb = null;
 try { if (typeof supabase !== 'undefined') sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e) { sb = null; }
 async function supabaseRest(method, table, query, body) {
   const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+  // POST 返回创建的行（拿云端 id 存作者凭证）
+  if (method === 'POST') headers['Prefer'] = 'return=representation';
   const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (query ? '?' + query : ''), opts);
@@ -1188,16 +1190,13 @@ async function cloudExists(lname) {
     return !!(rows && rows[0]);
   } catch(e) { return false; }
 }
-// 生成下一个 uid：从 000000 起按注册顺序分配、填补空号保证连续，超过 999999 自动加位
+// 生成下一个 uid：服务端原子分配（从 000000 起补空号保证连续，超过 999999 自动加位）
+// 查询失败时返回 null（注册中止提示重试），绝不用时间戳等随机值凑号
 async function nextUid() {
   try {
-    const rows = await supabaseRest('GET', 'users', 'select=uid&limit=10000');
-    const used = new Set((rows || []).map(r => String(r.uid)).filter(Boolean));
-    let n = 0;
-    // 找最小未使用的编号（补空洞），保证 uid 连续无缺号
-    while (used.has(String(n).padStart(6, '0'))) n++;
-    return String(n).padStart(6, '0');
-  } catch(e) { return String(Date.now()).slice(-6); }
+    const uid = await supabaseRpc('next_uid');
+    return (uid && typeof uid === 'string') ? uid : null;
+  } catch(e) { return null; }
 }
 async function cloudCreateUser(u) {
   for (let i = 0; i < 6; i++) {
@@ -1205,9 +1204,11 @@ async function cloudCreateUser(u) {
       await supabaseRest('POST', 'users', '', { name: u.name, lname: u.lname, password_hash: u.hash, avatar_color: u.avatar_color, uid: u.uid });
       return true;
     } catch(e) {
-      // uid 唯一冲突（并发注册撞号）→ 重新取最小空号再试
+      // uid 唯一冲突（并发注册撞号）→ 重新取最小空号再试；分配失败则中止
       if (String(e.message).includes('409') || String(e.message).includes('duplicate') || String(e.message).includes('unique')) {
-        u.uid = await nextUid();
+        const nuid = await nextUid();
+        if (!nuid) return false;
+        u.uid = nuid;
         continue;
       }
       return false;
@@ -1270,22 +1271,26 @@ async function handleAuth() {
       if (exists) { showToast('该用户名已被注册'); }
       else {
         const avatarColor = 'hsl(' + Math.floor(Math.random()*360) + ',65%,55%)';
-        const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor, uid: await nextUid() };
-        const ok = await cloudCreateUser(newUser);
-        if (!ok) {
-          showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
-        } else {
-          ensureLocalUser(newUser);
-          currentUser = newUser;
-          setCurrentUser(currentUser);
-          updateNavUser();
-          closeAuth();
-          igState = null;
-          await igLoad();
-          igRender();
-          showToast('注册成功，账号已同步云端');
-          cloudHeartbeat(currentUser.name, currentUser.lname);
-          return;
+        const nuid = await nextUid();
+        if (!nuid) { showToast('⚠️ UID 分配失败，请检查网络后重试'); }
+        else {
+          const newUser = { name: u, lname: lname, hash: hash, avatar_color: avatarColor, avatarColor: avatarColor, uid: nuid };
+          const ok = await cloudCreateUser(newUser);
+          if (!ok) {
+            showToast('⚠️ 注册失败：云端写入未成功，请检查网络后重试');
+          } else {
+            ensureLocalUser(newUser);
+            currentUser = newUser;
+            setCurrentUser(currentUser);
+            updateNavUser();
+            closeAuth();
+            igState = null;
+            await igLoad();
+            igRender();
+            showToast('注册成功，账号已同步云端');
+            cloudHeartbeat(currentUser.name, currentUser.lname);
+            return;
+          }
         }
       }
     }
@@ -1516,6 +1521,12 @@ function loadPosts() {
     .catch(() => { /* 云端不可用则保留本地缓存 */ });
 }
 function getPosts() { return cloudPosts; }
+// ===== 帖子作者操作凭证（编辑/删除用，token 只存本机，云端 edit_token 列不可读） =====
+let postTokenMap = {};
+function loadPostTokens() { try { postTokenMap = JSON.parse(localStorage.getItem('gh_post_tokens') || '{}'); } catch { postTokenMap = {}; } }
+function savePostTokens() { try { localStorage.setItem('gh_post_tokens', JSON.stringify(postTokenMap)); } catch {} }
+function getPostToken(pid) { return pid ? postTokenMap[String(pid)] : null; }
+
 async function savePostToCloud(p) {
   const localPost = {
     id: 'local_' + Date.now() + Math.floor(Math.random()*1000),
@@ -1533,7 +1544,17 @@ async function savePostToCloud(p) {
   try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
   renderPosts();
   try {
-    await supabaseRest('POST', 'posts', '', { user_name: p.user, lname: p.lname || null, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, image: p.image || null, likes: 0 });
+    // 发帖生成作者操作凭证：作者可凭它编辑/删除自己的帖子（云端该列不可公开读取）
+    const editToken = 't' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const rows = await supabaseRest('POST', 'posts', 'select=id', { user_name: p.user, lname: p.lname || null, avatar_color: p.avatarColor, game: p.game, title: p.title, content: p.excerpt, image: p.image || null, likes: 0, edit_token: editToken });
+    if (rows && rows[0] && rows[0].id) {
+      const realId = String(rows[0].id);
+      const idx = cloudPosts.findIndex(x => x.id === localPost.id);
+      if (idx >= 0) cloudPosts[idx].id = realId;
+      postTokenMap[realId] = editToken;
+      savePostTokens();
+      try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+    }
     showToast('已发布并同步到云端');
     loadPosts();
   } catch(e) {
@@ -1565,17 +1586,51 @@ function postRemoveImage() {
   document.getElementById('postImageRemove').style.display = 'none';
   document.getElementById('postImageInput').value = '';
 }
+let editingPost = null; // 编辑状态：{ id, token }
 function closePost() {
   document.getElementById('postModal').classList.remove('show');
   document.getElementById('postTitle').value = '';
   document.getElementById('postContent').value = '';
   postRemoveImage();
+  editingPost = null;
+}
+// 打开编辑弹窗（仅作者本人持有凭证时可编辑）
+function editPost(pid) {
+  if (!currentUser) { showToast('请先登录'); openAuth(); return; }
+  const p = getPosts().find(x => String(x.id) === String(pid));
+  const tk = getPostToken(pid);
+  if (!p) { showToast('帖子不存在'); return; }
+  if (!tk) { showToast('该帖子暂无编辑权限（旧帖需管理员在后台管理）'); return; }
+  editingPost = { id: String(pid), token: tk };
+  document.getElementById('postModal').classList.add('show');
+  document.getElementById('postTitle').value = p.title || '';
+  document.getElementById('postContent').value = p.content || p.excerpt || '';
+  postImageData = p.image || null;
+  const prev = document.getElementById('postImagePreview');
+  const rm = document.getElementById('postImageRemove');
+  if (postImageData) { prev.src = postImageData; prev.style.display = 'block'; rm.style.display = 'inline-block'; }
+  else { prev.style.display = 'none'; rm.style.display = 'none'; }
 }
 async function submitPost() {
   const title = document.getElementById('postTitle').value.trim();
   const content = document.getElementById('postContent').value.trim();
   if (!title) { showToast('请输入标题'); return; }
   if (!content) { showToast('请输入内容'); return; }
+  // 编辑模式：调用作者编辑 RPC（服务端校验凭证）
+  if (editingPost) {
+    try {
+      const r = await supabaseRpc('author_edit_post', { p_id: Number(editingPost.id), p_token: editingPost.token, p_title: title, p_content: content, p_image: postImageData || null });
+      if (!r || !r.ok) { showToast('编辑失败：无权限或帖子不存在'); return; }
+      const row = getPosts().find(x => String(x.id) === editingPost.id);
+      if (row) { row.title = title; row.content = content; row.image = postImageData || null; }
+      editingPost = null;
+      closePost();
+      showToast('已保存修改');
+      await loadPosts();
+      renderPosts();
+      return;
+    } catch(e) { showToast('编辑失败：' + e.message); return; }
+  }
   await savePostToCloud({
     user: currentUser.name,
     lname: currentUser.lname || currentUser.name,
@@ -1609,6 +1664,11 @@ function openMyPosts() {
   } else {
     list.innerHTML = my.map(p=>{
       const excerpt = esc(p.content || p.excerpt || '');
+      const tk = getPostToken(p.id);
+      const actions = tk
+        ? `<button class="ig-shop-btn" style="margin-left:12px;" onclick="editPost('${esc(p.id)}')">编辑</button>
+           <button class="ig-shop-btn" style="background:#e74c3c;margin-left:8px;" onclick="deletePost('${esc(p.id)}')">删除</button>`
+        : `<div style="font-size:11px;color:var(--text-secondary);margin-left:12px;">旧帖仅管理员可管理</div>`;
       return `
       <div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:start;">
@@ -1617,7 +1677,7 @@ function openMyPosts() {
             <div style="font-size:12px;color:var(--text-secondary);">${esc(p.game)}</div>
             <div style="font-size:13px;margin-top:6px;color:var(--text-secondary);">${excerpt.slice(0,80)}${excerpt.length>80?'...':''}</div>
           </div>
-          <button class="ig-shop-btn" style="background:#e74c3c;margin-left:12px;" onclick="deletePost(${p.id})">删除</button>
+          <div style="display:flex;align-items:center;">${actions}</div>
         </div>
       </div>`;
     }).join('');
@@ -1625,17 +1685,32 @@ function openMyPosts() {
   document.getElementById('myPostsModal').classList.add('show');
 }
 async function deletePost(pid) {
-  // 安全策略：帖子删除需管理员权限（数据库已禁止匿名删除），普通用户只能删除本地未同步的草稿
-  if (pid && !String(pid).startsWith('local_')) {
-    showToast('帖子已同步云端，删除请联系管理员（管理后台→帖子管理）');
+  if (!pid) { showToast('删除失败'); return; }
+  // 本地草稿：直接删除
+  if (String(pid).startsWith('local_')) {
+    if (!confirm('确定删除这条本地草稿吗？')) return;
+    cloudPosts = cloudPosts.filter(p => String(p.id) !== String(pid));
+    try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+    showToast('已删除');
+    openMyPosts();
+    renderPosts();
     return;
   }
-  if (!confirm('确定删除这条本地草稿吗？')) return;
-  cloudPosts = cloudPosts.filter(p => String(p.id) !== String(pid));
-  try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
-  showToast('已删除');
-  openMyPosts();
-  renderPosts();
+  // 云端帖子：作者凭操作凭证删除（服务端校验），管理员走管理后台
+  const tk = getPostToken(pid);
+  if (!tk) { showToast('该帖子无删除权限（旧帖需管理员在管理后台删除）'); return; }
+  if (!confirm('确定删除这条帖子吗？删除后无法恢复。')) return;
+  try {
+    const r = await supabaseRpc('author_delete_post', { p_id: Number(pid), p_token: tk });
+    if (!r || !r.ok) { showToast('删除失败：无权限或帖子不存在'); return; }
+    delete postTokenMap[String(pid)];
+    savePostTokens();
+    cloudPosts = cloudPosts.filter(p => String(p.id) !== String(pid));
+    try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+    showToast('已删除');
+    openMyPosts();
+    renderPosts();
+  } catch(e) { showToast('删除失败：' + e.message); }
 }
 document.getElementById('myPostsModal').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
@@ -1656,6 +1731,7 @@ document.addEventListener('click', (e) => {
 currentUser = getCurrentUser();
 updateNavUser();
 loadLiked();
+loadPostTokens(); // 加载本机保存的作者操作凭证
 if (currentUser) {
   cloudHeartbeat(currentUser.name, currentUser.lname);
   refreshCloudPerms(); // 云端复核真实权限（管理员/封禁），防本地伪造
@@ -1766,6 +1842,9 @@ function renderPosts() {
           </svg>
           <span>${comments.length}</span>
         </div>
+        ${getPostToken(pid) ? `
+        <div class="post-action" onclick="event.stopPropagation(); editPost('${esc(pid)}')">✏️ 编辑</div>
+        <div class="post-action" onclick="event.stopPropagation(); deletePost('${esc(pid)}')">🗑️ 删除</div>` : ''}
       </div>
       <div class="post-comments" onclick="event.stopPropagation()">
         ${comments.map(c=>`

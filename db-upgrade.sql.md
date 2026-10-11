@@ -190,3 +190,68 @@ CREATE TRIGGER trg_protect_comments_write BEFORE UPDATE OR DELETE ON comments FO
 REVOKE DELETE ON public.posts FROM anon, authenticated;
 REVOKE DELETE, UPDATE ON public.comments FROM anon, authenticated;
 ```
+
+---
+
+## E. 帖子作者编辑/删除权限（2026-10-11 已执行）
+
+作者凭发帖时生成的随机凭证（edit_token，仅存本机，云端该列不可公开读取）编辑/删除自己的帖子；管理员不受限。旧帖无凭证，仅管理员可管理。
+
+```sql
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS edit_token text;
+REVOKE SELECT (edit_token) ON public.posts FROM anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.author_edit_post(p_id bigint, p_token text, p_title text, p_content text, p_image text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.posts%ROWTYPE;
+BEGIN
+  SELECT * INTO r FROM public.posts WHERE id = p_id LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_post'); END IF;
+  IF r.edit_token IS NULL OR r.edit_token <> p_token THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_perm');
+  END IF;
+  UPDATE public.posts SET title = p_title, content = p_content, image = p_image WHERE id = p_id;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+GRANT EXECUTE ON FUNCTION public.author_edit_post(bigint,text,text,text,text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.author_delete_post(p_id bigint, p_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.posts%ROWTYPE;
+BEGIN
+  SELECT * INTO r FROM public.posts WHERE id = p_id LIMIT 1;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'reason', 'no_post'); END IF;
+  IF r.edit_token IS NULL OR r.edit_token <> p_token THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_perm');
+  END IF;
+  DELETE FROM public.comments WHERE post_id = p_id;
+  DELETE FROM public.posts WHERE id = p_id;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+GRANT EXECUTE ON FUNCTION public.author_delete_post(bigint,text) TO anon, authenticated;
+```
+
+---
+
+## F. UID 连续分配修复（2026-10-11 已执行）
+
+修复新账号拿到 999998 乱号的问题：UID 改由**服务端 RPC 原子分配**（连续补空号），前端不再用时间戳兜底凑号。
+
+```sql
+CREATE OR REPLACE FUNCTION public.next_uid()
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE n integer := 0;
+BEGIN
+  LOOP
+    IF NOT EXISTS (SELECT 1 FROM public.users WHERE uid = lpad(n::text, 6, '0')) THEN
+      RETURN lpad(n::text, 6, '0');
+    END IF;
+    n := n + 1;
+    IF n > 99999999 THEN RAISE EXCEPTION 'UID 编号已耗尽'; END IF;
+  END LOOP;
+END $$;
+GRANT EXECUTE ON FUNCTION public.next_uid() TO anon, authenticated;
+
+-- 修正已产生的乱号：999998 → 000003（最小空号）
+UPDATE public.users SET uid = '000003' WHERE uid = '999998';
+```
