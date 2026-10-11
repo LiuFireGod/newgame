@@ -285,6 +285,7 @@ function render() {
     <div class="tabs">
       <div class="tab ${curTab==='overview'?'active':''}" onclick="switchTab('overview')">概览</div>
       <div class="tab ${curTab==='users'?'active':''}" onclick="switchTab('users')">用户管理 (${allUsers.length})</div>
+      <div class="tab ${curTab==='accounts'?'active':''}" onclick="switchTab('accounts')">账号库</div>
       <div class="tab ${curTab==='posts'?'active':''}" onclick="switchTab('posts')">帖子管理 (${allPosts.length})</div>
       <div class="tab ${curTab==='comments'?'active':''}" onclick="switchTab('comments')">评论管理 (${allComments.length})</div>
     </div>
@@ -298,8 +299,57 @@ function render() {
 function renderBody() {
   if (curTab === 'overview') return renderOverview();
   if (curTab === 'users') return renderUsers();
+  if (curTab === 'accounts') { renderAccounts(); return '<div class="card"><div class="empty">加载账号库…</div></div>'; }
   if (curTab === 'posts') return renderPosts();
   if (curTab === 'comments') return renderComments();
+}
+
+// ===== 账号库（云端 RPC 读取全部账号：UID/名称/账号/密码状态/个人简介/注册时间） =====
+let acctList = null;
+async function renderAccounts() {
+  const body = document.getElementById('body');
+  if (!body) return;
+  try {
+    const rows = await adminRpc('admin_list_users', { p_secret: getAdminSecret() });
+    acctList = rows || [];
+  } catch(e) { body.innerHTML = '<div class="card"><div class="empty">账号库加载失败：' + esc(e.message) + '（请确认已输入管理密钥）</div></div>'; return; }
+  const fmt = f => ({ 'pbkdf2': '<span class="tag tag-admin">PBKDF2 强加密</span>', 'legacy': '<span class="tag tag-ban">旧格式(未迁移)</span>', 'none': '<span class="tag tag-user">无密码</span>' }[f] || esc(f));
+  body.innerHTML = `<div class="card">${acctList.map(a=>`
+    <div class="row" style="align-items:flex-start;">
+      <div class="row-main">
+        <div class="row-title">${esc(a.name||'—')} ${a.uid?'<span style="color:var(--text-secondary);font-weight:400;font-size:12px;">UID ' + esc(a.uid) + '</span>':''} ${a.is_admin?'<span class="tag tag-admin">管理员</span>':''} ${a.banned?'<span class="tag tag-ban">已封禁</span>':''}</div>
+        <div class="row-meta" style="display:flex;flex-wrap:wrap;gap:6px;">
+          <span>账号：${esc(a.lname)}</span>
+          <span>${fmt(a.password_format)} ${a.password_prefix ? '<span style="color:var(--text-secondary);font-size:11px;">' + esc(a.password_prefix) + '…</span>' : ''}</span>
+          ${a.invite_code ? '<span>邀请码：' + esc(a.invite_code) + '</span>' : ''}
+        </div>
+        <div class="row-meta"><span>简介：${esc(a.bio || '（未填写）')}</span></div>
+        <div class="row-meta"><span>注册：${fmtTime(a.created_at)}</span></div>
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-small" onclick="admResetPwd('${esc(a.lname)}')">重置密码</button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+// 重置密码：输入新密码 → 前端强哈希 → RPC 写入（同时清该账号锁定）
+async function makePasswordHash(pw) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = [...saltBytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt: enc.encode(saltHex), iterations: 600000, hash:'SHA-256' }, key, 256);
+  const hex = [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  return 'pbkdf2$600000$' + saltHex + '$' + hex;
+}
+async function admResetPwd(lname) {
+  if (!confirm('确认重置「' + lname + '」的密码？重置后该账号原密码立即失效。')) return;
+  const pw = prompt('为「' + lname + '」设置新密码（8 位以上）：');
+  if (!pw || pw.length < 8) { toast('密码过短或已取消'); return; }
+  try {
+    const hash = await makePasswordHash(pw);
+    const r = await adminRpc('admin_reset_password', { p_lname: lname, p_new_hash: hash, p_secret: getAdminSecret() });
+    toast(r && r.ok ? '已重置密码并清除锁定' : '重置失败：账号不存在');
+  } catch(e) { toast('重置失败：' + e.message); }
 }
 
 function renderOverview() {

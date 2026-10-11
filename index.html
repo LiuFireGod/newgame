@@ -659,7 +659,8 @@
         <div class="user-menu-item" onclick="openProfile()">个人中心</div>
         <div class="user-menu-item" onclick="openMyPosts()">我的帖子</div>
         <div class="user-menu-item" id="menuAdmin" style="display:none;" onclick="location.href='admin-users.html'">管理后台</div>
-        <div class="user-menu-item logout" onclick="logout()">切换账号</div>
+        <div class="user-menu-item" onclick="openSwitch()">切换账号</div>
+        <div class="user-menu-item logout" onclick="logout()">退出登录</div>
       </div>
     </div>
   </div>
@@ -788,6 +789,19 @@
 
     <div class="ig-shop-title" style="color:#e67e22;">成就</div>
     <div id="igAchievements"></div>
+  </div>
+</div>
+
+<!-- ===== 切换账号弹窗（本机已登录过的账号，点击自动登入） ===== -->
+<div class="modal-overlay" id="switchModal">
+  <div class="modal" style="max-width:420px;">
+    <button class="close-modal" onclick="closeSwitch()">&times;</button>
+    <h2>切换账号</h2>
+    <div class="sub">点击本机已登录过的账号，自动切换（云端校验）</div>
+    <div id="switchList" style="margin-top:10px;max-height:48vh;overflow-y:auto;"></div>
+    <div style="margin-top:14px;">
+      <button class="ig-shop-btn" style="width:100%;" onclick="closeSwitch(); openAuth()">登录其他账号</button>
+    </div>
   </div>
 </div>
 
@@ -1346,6 +1360,74 @@ function logout() {
   igLoad(); // 切回游客空存档
   showToast('请登录其他账号');
 }
+
+// ===== 切换账号（本机已登录账号 → 点击自动登入，云端校验） =====
+function openSwitch() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('userMenu').classList.remove('show');
+  renderSwitch();
+  document.getElementById('switchModal').classList.add('show');
+}
+function closeSwitch() { document.getElementById('switchModal').classList.remove('show'); }
+function renderSwitch() {
+  const users = getUsers().filter(x => x && x.lname && x.hash);
+  const list = document.getElementById('switchList');
+  if (!list) return;
+  if (!users.length) {
+    list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);font-size:13px;">本机暂无其他账号，请先登录</div>';
+    return;
+  }
+  list.innerHTML = users.map(x => {
+    const cur = currentUser && currentUser.lname === x.lname;
+    const color = x.avatar_color || '#6c5ce7';
+    const nm = x.name || x.lname;
+    const imgBg = x.avatar_img ? `background:url("${safeImage(x.avatar_img)}") center/cover no-repeat;` : `background:${color};`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:10px;${cur ? 'background:rgba(108,92,231,.12);' : ''}" onclick="switchToAccount('${esc(x.lname)}')">
+      <div style="width:38px;height:38px;border-radius:50%;${imgBg}display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;">${x.avatar_img ? '' : esc((nm[0] || '?').toUpperCase())}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:14px;word-break:break-all;">${esc(nm)}${cur ? ' <span style="color:var(--accent-light);font-size:12px;">（当前）</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text-secondary);word-break:break-all;">${esc(x.lname)}${x.uid ? ' · UID ' + esc(x.uid) : ''}</div>
+      </div>
+      <span style="color:var(--text-secondary);font-size:18px;">${cur ? '✓' : '›'}</span>
+    </div>`;
+  }).join('');
+}
+// 切换到指定账号（自动登入）：用本机保存的哈希走云端 login_check 校验，云端不可用禁止切换
+async function switchToAccount(lname) {
+  const cur = currentUser && currentUser.lname === lname;
+  if (cur) { closeSwitch(); return; }
+  const users = getUsers();
+  const rec = users.find(x => x.lname === lname);
+  if (!rec || !rec.hash) { showToast('该账号本地凭证缺失，请重新登录'); return; }
+  const cloudOk = await cloudPing();
+  if (!cloudOk) { showToast('⚠️ 无法连接云端服务器，禁止切换，请检查网络后重试'); return; }
+  try {
+    const res = await supabaseRpc('login_check', { p_lname: lname, p_hash: rec.hash, p_hash_legacy: '' });
+    if (!res || !res.ok) {
+      if (res && res.reason === 'locked') showToast('该账号已临时锁定，请 15 分钟后再试');
+      else if (res && res.reason === 'banned') showToast('该账号已被封禁');
+      else showToast('该账号凭证已失效（密码可能已修改），请用密码重新登录一次');
+      return;
+    }
+    // 切换成功：先离线旧账号，再载入新账号
+    if (currentUser) cloudOffline(currentUser.name, currentUser.lname);
+    currentUser = { name: res.name, lname: res.lname || lname, hash: rec.hash, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
+    setCurrentUser(currentUser);
+    ensureLocalUser(currentUser);
+    updateNavUser();
+    closeSwitch();
+    await igLoad();
+    igRender();
+    await loadPosts();
+    renderPosts();
+    cloudHeartbeat(currentUser.name, currentUser.lname);
+    refreshCloudPerms();
+    showToast('已切换到 ' + currentUser.name);
+  } catch(e) { showToast('切换失败：' + e.message); }
+}
+document.getElementById('switchModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSwitch();
+});
 
 // ===== 个人中心（资料编辑） =====
 const PF_COLORS = ['#ff6b81','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#6c5ce7','#a29bfe','#fd79a8','#00b894'];
