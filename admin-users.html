@@ -327,7 +327,7 @@ async function renderAccounts() {
         <div class="row-meta"><span>注册：${fmtTime(a.created_at)}</span></div>
       </div>
       <div class="row-actions">
-        <button class="btn btn-small" onclick="admResetPwd('${esc(a.lname)}')">重置密码</button>
+        <button class="btn btn-small" style="background:var(--accent);" onclick="admResetPwd('${esc(a.lname)}')">重置密码</button>
       </div>
     </div>`).join('')}</div>`;
 }

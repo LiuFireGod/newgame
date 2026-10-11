@@ -1529,9 +1529,15 @@ async function pfSave() {
     if (!oldPass) { showToast('请输入当前密码'); return; }
     const err = validatePassword(newPass);
     if (err) { showToast(err); return; }
-    const oldHash = await makePasswordHash(oldPass);
+    const oldHash0 = await makePasswordHash(oldPass);
     const oldLegacy = simpleHash(oldPass);
     const newHash = await makePasswordHash(newPass);
+    // 旧密码校验必须用库中同一盐重算（随机盐哈希每次不同，等值比对永远失败——与登录修复一致）
+    let oldHash = oldHash0;
+    const saltInfo = await supabaseRpc('get_login_salt', { p_lname: currentUser.lname });
+    if (saltInfo && saltInfo.pbkdf2 && saltInfo.salt && saltInfo.iter) {
+      oldHash = 'pbkdf2$' + saltInfo.iter + '$' + saltInfo.salt + '$' + await hashPassword(oldPass, saltInfo.salt, saltInfo.iter);
+    }
     try {
       const r = await supabaseRpc('change_password', { p_lname: currentUser.lname, p_old: oldHash, p_old_legacy: oldLegacy, p_new: newHash });
       if (!r || !r.ok) { showToast('当前密码不正确，改密失败'); return; }
