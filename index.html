@@ -791,6 +791,9 @@
     <div class="ig-shop-title" style="color:#e67e22;">成就</div>
     <div id="igAchievements"></div>
   </div>
+
+  <!-- 游戏视图：修仙护宗塔防（td-game.js） -->
+  <div class="game-view" id="tdView"></div>
 </div>
 
 <!-- ===== 切换账号弹窗（本机已登录过的账号，点击自动登入） ===== -->
@@ -2095,10 +2098,18 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('gameInfoView').classList.add('show');
+    } else if (currentGame === "游戏3") {
+      // 修仙护宗塔防（td-game.js 注入，首次点击挂载）
+      document.getElementById('postList').style.display = 'none';
+      document.getElementById('gameView').classList.remove('show');
+      document.getElementById('gameInfoView').classList.remove('show');
+      document.getElementById('tdView').classList.add('show');
+      if (window.TDGame) { window.TDGame.start(); }
     } else {
       document.getElementById('postList').style.display = '';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('gameInfoView').classList.remove('show');
+      document.getElementById('tdView').classList.remove('show');
       renderPosts();
     }
   }
@@ -3476,5 +3487,6 @@ function showToast(msg) {
 }
 
 </script>
+<script src="td-game.js"></script>
 </body>
 </html>
