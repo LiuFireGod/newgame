@@ -2231,6 +2231,23 @@ async function toggleLike(el, pid) {
 }
 
 // ===== 游戏标签切换 =====
+// 墨影江湖浏览器全屏（防手机误触页面其他区域）；不支持的平台自动降级
+function rgEnterFullscreen() {
+  try {
+    var f = document.getElementById('rgFrame');
+    if (!f || document.fullscreenElement || document.webkitFullscreenElement) return;
+    var fn = f.requestFullscreen || f.webkitRequestFullscreen;
+    if (fn) fn.call(f);
+  } catch (e) {}
+}
+function rgExitFullscreen() {
+  try {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      var fn = document.exitFullscreen || document.webkitExitFullscreen;
+      if (fn) fn.call(document);
+    }
+  } catch (e) {}
+}
 document.getElementById('gameTags').addEventListener('click', (e) => {
   if (e.target.classList.contains('game-tag')) {
     document.querySelectorAll('.game-tag').forEach(t => t.classList.remove('active'));
@@ -2239,6 +2256,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
 
     // 愚公移山标签：显示游戏，隐藏帖子
     if (currentGame === "愚公移山") {
+      rgExitFullscreen();
       if (!currentUser) {
         showToast('请先登录后进入游戏');
         openAuth();
@@ -2255,6 +2273,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       igLoad();
       igRender();
     } else if (currentGame === "STS") {
+      rgExitFullscreen();
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('tdView').classList.remove('show');
@@ -2262,6 +2281,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       document.getElementById('gameInfoView').classList.add('show');
     } else if (currentGame === "修仙护宗塔防") {
       // 修仙护宗塔防（td-game.js 注入，首次点击挂载）
+      rgExitFullscreen();
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('gameInfoView').classList.remove('show');
@@ -2282,7 +2302,10 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       }
       // 每次切进来都通知一次登录态，保证云端进度最新
       rgSyncLogin();
+      // 浏览器全屏游玩，避免手机点击误触页面上下滑动
+      rgEnterFullscreen();
     } else {
+      rgExitFullscreen();
       document.getElementById('postList').style.display = '';
       document.getElementById('gameView').classList.remove('show');
       document.getElementById('gameInfoView').classList.remove('show');

@@ -1730,6 +1730,14 @@ function bindEvents(){
 }
 function exitToMain(){
   saveGame(); showView('main'); renderRoleCards();
+  // 若处于父页面（大厅 iframe）全屏中，退出全屏回到大厅
+  try{
+    if(window.parent && window.parent!==window && window.parent.document &&
+       (window.parent.document.fullscreenElement || window.parent.document.webkitFullscreenElement)){
+      var fn=window.parent.document.exitFullscreen || window.parent.document.webkitExitFullscreen;
+      if(fn) fn.call(window.parent.document);
+    }
+  }catch(e){}
 }
 
 /* ---------- 启动 ---------- */
