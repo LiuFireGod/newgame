@@ -32,6 +32,7 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;}
 body{
+  display:flex;flex-direction:column;
   font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   background:
     radial-gradient(1200px 600px at 20% -10%, rgba(62,107,90,.10), transparent 60%),
@@ -91,7 +92,9 @@ body{
 /* ============================================================
    视图容器（hash 路由）
    ============================================================ */
-.view{display:none;position:fixed;inset:0;z-index:5;flex-direction:column;}
+/* 视图为 body 的 flex 子项，占据顶部 HUD/活动条之外的剩余空间，
+   避免 fixed 全屏覆盖导致主界面内容与顶部栏重叠 */
+.view{display:none;flex:1;min-height:0;flex-direction:column;}
 .view.active{display:flex;}
 .safe-top{padding-top:env(safe-area-inset-top);}
 
