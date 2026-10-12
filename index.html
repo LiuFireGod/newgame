@@ -675,8 +675,8 @@
     <div class="game-tag active" data-game="全部">全部</div>
     <div class="game-tag" data-game="愚公移山">愚公移山</div>
     <div class="game-tag" data-game="STS">杀戮尖塔</div>
-    <div class="game-tag" data-game="游戏3">游戏3</div>
-    <div class="game-tag" data-game="游戏4">游戏4</div>
+    <div class="game-tag" data-game="修仙护宗塔防">修仙护宗塔防</div>
+    <div class="game-tag" data-game="墨影江湖">墨影江湖</div>
     <div class="game-tag" data-game="游戏5">游戏5</div>
     <div class="game-tag" data-game="游戏6">游戏6</div>
   </div>
@@ -795,7 +795,7 @@
   <!-- 游戏视图：修仙护宗塔防（td-game.js） -->
   <div class="game-view" id="tdView"></div>
 
-  <!-- 游戏视图：墨影江湖·肉鸽（游戏4，内嵌独立页面，云端存档） -->
+  <!-- 游戏视图：墨影江湖·肉鸽（内嵌独立页面，云端存档） -->
   <div class="game-view" id="rgView">
     <iframe id="rgFrame" title="墨影江湖" style="width:100%;height:86vh;border:0;border-radius:12px;background:#F3ECDD;" allow="fullscreen"></iframe>
   </div>
@@ -2260,7 +2260,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       document.getElementById('tdView').classList.remove('show');
       document.getElementById('rgView').classList.remove('show');
       document.getElementById('gameInfoView').classList.add('show');
-    } else if (currentGame === "游戏3") {
+    } else if (currentGame === "修仙护宗塔防") {
       // 修仙护宗塔防（td-game.js 注入，首次点击挂载）
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
@@ -2268,7 +2268,7 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       document.getElementById('rgView').classList.remove('show');
       document.getElementById('tdView').classList.add('show');
       if (window.TDGame) { window.TDGame.start(); }
-    } else if (currentGame === "游戏4") {
+    } else if (currentGame === "墨影江湖") {
       // 墨影江湖·肉鸽（独立页面内嵌，首次点击懒加载；常驻保留战斗状态）
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
