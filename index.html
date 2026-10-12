@@ -3389,9 +3389,13 @@ async function cloudUpsertSave(userName, saveData) {
   try {
     // save_data 列为 jsonb：RPC 参数需传对象（PostgREST 自动 JSON 序列化）
     const payload = typeof saveData === 'string' ? JSON.parse(saveData) : saveData;
-    const res = await supabaseRpc('save_game', { p_user_name: userName, p_token: igGetSaveToken(), p_save_data: payload });
+    // 登录会话令牌：作为「账号本人」凭证，token 失配时由服务端校验，匿名者无权重建存档凭证
+    const authToken = (currentUser && currentUser.token) || '';
+    const res = await supabaseRpc('save_game', { p_user_name: userName, p_token: igGetSaveToken(), p_auth_token: authToken, p_save_data: payload });
     if (res && res.ok && res.token) {
-      if (res.token !== igGetSaveToken()) igSetSaveToken(res.token); // 首次建档返回凭证，仅存本机
+      if (res.token !== igGetSaveToken()) igSetSaveToken(res.token); // 首次建档/重建返回凭证，仅存本机
+    } else if (res && res.reason) {
+      showToast('存档同步失败：' + (res.detail || res.reason) + '（请重新登录后再试）');
     }
   } catch(e) {}
 }
@@ -3423,8 +3427,14 @@ async function igLoad() {
     try {
       const rows = await supabaseRest('GET', 'game_saves', 'select=user_name,save_data&user_name=eq.' + encodeURIComponent(currentUser.lname || currentUser.name) + '&limit=1');
       if (rows && rows[0] && rows[0].save_data) {
-        igState = Object.assign(igState, rows[0].save_data);
-        if (!igState.mountains) igState.mountains = {};
+        const cloud = rows[0].save_data;
+        // 以较新的存档为准（lastTime 毫秒时间戳），防止云端旧快照回退本地进度/清空已购弟子
+        const localT = Number(igState.lastTime || 0);
+        const cloudT = Number(cloud.lastTime || 0);
+        if (cloudT > localT) {
+          igState = Object.assign(igState, cloud);
+          if (!igState.mountains) igState.mountains = {};
+        }
       }
     } catch(e) {}
   }
