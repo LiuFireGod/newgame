@@ -2249,12 +2249,16 @@ document.getElementById('gameTags').addEventListener('click', (e) => {
       }
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameInfoView').classList.remove('show');
+      document.getElementById('tdView').classList.remove('show');
+      document.getElementById('rgView').classList.remove('show');
       document.getElementById('gameView').classList.add('show');
       igLoad();
       igRender();
     } else if (currentGame === "STS") {
       document.getElementById('postList').style.display = 'none';
       document.getElementById('gameView').classList.remove('show');
+      document.getElementById('tdView').classList.remove('show');
+      document.getElementById('rgView').classList.remove('show');
       document.getElementById('gameInfoView').classList.add('show');
     } else if (currentGame === "游戏3") {
       // 修仙护宗塔防（td-game.js 注入，首次点击挂载）
