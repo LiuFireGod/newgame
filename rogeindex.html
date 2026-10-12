@@ -768,6 +768,21 @@ const canvas = $('gameCanvas');
 const ctx = canvas.getContext('2d');
 let W=0, H=0, cx=0, cy=0, dpr=1, camX=0, camY=0;
 
+/* ---------- 战场地图边界（水墨围场） ---------- */
+const MAP_W = 1500, MAP_H = 800;   // 可活动范围（与角色/点击目标 clamp 一致）
+const MAP_M = 26;                  // 边界内安全边距（怪物/角色贴边不越界）
+let DECOR = [];                    // 场景装饰（确定性分布，渲染前构建一次）
+function buildDecor(){
+  DECOR = [];
+  const hash = (i,s)=> { const v=Math.sin(i*127.1+s)*43758.5453; return v-Math.floor(v); };
+  for(let i=0;i<46;i++){
+    const x=(hash(i,311)*2-1)*MAP_W, y=(hash(i,577)*2-1)*MAP_H;
+    // 避开世界原点阵纹区（人物出生地）
+    if(Math.hypot(x,y)<170) continue;
+    DECOR.push({ x, y, kind:i%4, r:0.6+hash(i,911)*0.9, flip:hash(i,129)>0.5 });
+  }
+}
+
 function resizeCanvas(){
   dpr = Math.min(window.devicePixelRatio||1, 2);
   const stage = $('battleStage');
@@ -847,6 +862,11 @@ function showView(v){
   el.hud.style.display = v==='main'?'flex':'none';
   el.actStrip.style.display = v==='main'?'flex':'none';
   if(v==='battle'){ el.viewBattle.classList.add('active'); resizeCanvas(); }
+  // 回到主界面即停止战斗：复位战斗状态并关闭所有弹层，杜绝"主界面仍在战斗"
+  if(v==='main'){
+    Game.mode='idle';
+    Object.values(overlay).forEach(o=>closeOverlay(o));
+  }
 }
 function openOverlay(o){ o.classList.add('show'); }
 function closeOverlay(o){ o.classList.remove('show'); }
@@ -1024,8 +1044,11 @@ function makeMob(type, wave){
   const ang=Math.random()*Math.PI*2;
   const R=minR+Math.random()*80;
   const hx=Game.hero?Game.hero.x:0, hy=Game.hero?Game.hero.y:0;
+  // 生成点收紧进围场边界内，杜绝出界怪
+  const sx=Math.max(-MAP_W+MAP_M+30,Math.min(MAP_W-MAP_M-30,hx+Math.cos(ang)*R));
+  const sy=Math.max(-MAP_H+MAP_M+30,Math.min(MAP_H-MAP_M-30,hy+Math.sin(ang)*R));
   return {
-    type, name:m.name, x:hx+Math.cos(ang)*R, y:hy+Math.sin(ang)*R,
+    type, name:m.name, x:sx, y:sy,
     hp:m.hp, maxHp:m.hp, atk:m.atk, speed:m.speed*(0.9+Math.random()*0.3),
     r:m.r, gold:m.gold, exp:m.exp, color:m.color, shape:m.shape,
     atkTimer:Math.random()*0.5, slow:0, slowT:0, hitFlash:0, atkAnim:0, boss:false,
@@ -1040,8 +1063,11 @@ function makeBoss(wave){
   const ang=Math.random()*Math.PI*2;
   const R=minR+Math.random()*60;
   const hx=Game.hero?Game.hero.x:0, hy=Game.hero?Game.hero.y:0;
+  // Boss 生成点同样收紧进围场边界内
+  const sx=Math.max(-MAP_W+MAP_M+40,Math.min(MAP_W-MAP_M-40,hx+Math.cos(ang)*R));
+  const sy=Math.max(-MAP_H+MAP_M+40,Math.min(MAP_H-MAP_M-40,hy+Math.sin(ang)*R));
   return {
-    type:'boss', name:BOSS_BASE.name, x:hx+Math.cos(ang)*R, y:hy+Math.sin(ang)*R,
+    type:'boss', name:BOSS_BASE.name, x:sx, y:sy,
     hp, maxHp:hp, atk:BOSS_BASE.atk*(1+0.12*(wave/10-1)),
     speed:BOSS_BASE.speed*(0.9+Math.random()*0.2), r:BOSS_BASE.r,
     gold:BOSS_BASE.gold, exp:BOSS_BASE.exp, color:BOSS_BASE.color, shape:'boss',
@@ -1093,8 +1119,9 @@ function update(dt){
       if(Math.abs(gdx)>0.5) h.face=gdx>0?1:-1;
     } else h.hasGoal=false;
   }
-  h.x=Math.max(-1500,Math.min(1500,h.x));
-  h.y=Math.max(-800,Math.min(800,h.y));
+  // 战场边界：角色不可越出围场
+  h.x=Math.max(-MAP_W+MAP_M,Math.min(MAP_W-MAP_M,h.x));
+  h.y=Math.max(-MAP_H+MAP_M,Math.min(MAP_H-MAP_M,h.y));
   // 镜头平滑跟随人物（以人物为中心）
   camX += (h.x-camX)*Math.min(1,dt*6);
   camY += (h.y-camY)*Math.min(1,dt*6);
@@ -1160,6 +1187,9 @@ function update(dt){
         if(h.hp<=0){ heroDie(); break; }
       }
     }
+    // 怪物同样受围场边界约束，无法追出地图
+    m.x=Math.max(-MAP_W+MAP_M+8,Math.min(MAP_W-MAP_M-8,m.x));
+    m.y=Math.max(-MAP_H+MAP_M+8,Math.min(MAP_H-MAP_M-8,m.y));
   }
 
   // 特效与浮字
@@ -1388,14 +1418,22 @@ function render(){
   drawBossBar();
 }
 
-/* 场地背景：水墨环形阵 */
+/* 场地背景：水墨围场（界外墨区 + 界内地 + 场景装饰 + 边界围墙 + 原点阵纹） */
 function drawGround(){
-  // 地面底色（镜头中心为渐变小点，覆盖世界）
+  // 界外：深墨虚空（视觉上明确"地图到此为止"）
+  ctx.fillStyle='#1D241C';
+  ctx.fillRect(-MAP_W-420,-MAP_H-420,MAP_W*2+840,MAP_H*2+840);
+  // 界内地面（镜头中心为渐变小点）
   const g=ctx.createRadialGradient(camX,camY,40,camX,camY,Math.max(W,H)*0.72);
   g.addColorStop(0,'#5F6D56');
   g.addColorStop(0.5,'#46553F');
   g.addColorStop(1,'#313C30');
-  ctx.fillStyle=g; ctx.fillRect(-3000,-3000,6000,6000);
+  ctx.fillStyle=g;
+  ctx.fillRect(-MAP_W-14,-MAP_H-14,MAP_W*2+28,MAP_H*2+28);
+  // 场景装饰（石/草/竹/残碑）
+  for(const d of DECOR) drawDecorItem(d);
+  // 边界围墙：四边水墨栏杆 + 角界碑
+  drawBorder();
   // 世界原点阵纹（人物开局所在）
   ctx.save();
   ctx.translate(0,0);
@@ -1411,6 +1449,69 @@ function drawGround(){
     const a=i/8*Math.PI*2;
     ctx.beginPath(); ctx.arc(Math.cos(a)*124,Math.sin(a)*124,2.5,0,Math.PI*2); ctx.fill();
   }
+  ctx.restore();
+}
+/* 单个场景装饰（水墨剪影，确定性坐标） */
+function drawDecorItem(d){
+  ctx.save();
+  ctx.translate(d.x,d.y);
+  ctx.globalAlpha=0.5;
+  const s=d.r;
+  if(d.kind===0){
+    // 石头
+    ctx.fillStyle='#3A4A36';
+    ctx.beginPath();
+    ctx.moveTo(-12*s,4*s); ctx.lineTo(-7*s,-5*s); ctx.lineTo(2*s,-8*s); ctx.lineTo(11*s,-3*s); ctx.lineTo(13*s,4*s);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(0,5*s,14*s,3.5*s,0,0,Math.PI*2); ctx.fill();
+  } else if(d.kind===1){
+    // 草丛（三茎）
+    ctx.strokeStyle='#4E6144'; ctx.lineWidth=2;
+    for(let k=-1;k<=1;k++){
+      ctx.beginPath();
+      ctx.moveTo(k*5*s,6*s);
+      ctx.quadraticCurveTo(k*8*s,-2*s,k*4*s,-8*s);
+      ctx.stroke();
+    }
+  } else if(d.kind===2){
+    // 竹影（两竿竹）
+    ctx.strokeStyle='#56704B'; ctx.lineWidth=3*s;
+    ctx.beginPath(); ctx.moveTo(-6*s,7*s); ctx.lineTo(-5*s,-9*s); ctx.stroke();
+    ctx.strokeStyle='#4E6144'; ctx.lineWidth=2*s;
+    ctx.beginPath(); ctx.moveTo(6*s,7*s); ctx.lineTo(7*s,-7*s); ctx.stroke();
+    ctx.strokeStyle='rgba(86,112,75,.6)'; ctx.lineWidth=1.5*s;
+    for(const [bx,by,dir] of [[-5*s,-3*s,1],[-5*s,-8*s,-1],[7*s,-2*s,1],[7*s,-6*s,-1]]){
+      ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx+dir*6*s,by-3*s); ctx.stroke();
+    }
+  } else {
+    // 残碑
+    ctx.fillStyle='#46523E';
+    ctx.beginPath(); ctx.moveTo(-7*s,8*s); ctx.lineTo(-4*s,-6*s); ctx.lineTo(4*s,-6*s); ctx.lineTo(7*s,8*s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(233,201,117,.35)';
+    ctx.fillRect(-2.5*s,-3*s,5*s,1.6*s);
+  }
+  ctx.restore();
+}
+/* 边界围墙：双线墨栏 + 竹青内线 + 四角界碑 */
+function drawBorder(){
+  const L=MAP_W+6, T=MAP_H+6;
+  ctx.save();
+  // 外粗墨线
+  ctx.strokeStyle='rgba(18,23,17,0.85)'; ctx.lineWidth=10;
+  ctx.strokeRect(-L,-T,L*2,T*2);
+  // 内竹青细线
+  ctx.strokeStyle='rgba(95,128,104,0.55)'; ctx.lineWidth=2.5;
+  ctx.strokeRect(-L+7,-T+7,L*2-14,T*2-14);
+  // 四角界碑（朱砂点）
+  ctx.fillStyle='rgba(190,75,54,0.75)';
+  const cr=7;
+  [[-L,-T],[L,-T],[L,T],[-L,T]].forEach(([bx,by])=>{
+    ctx.beginPath(); ctx.arc(bx,by,cr,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(233,201,117,0.5)';
+    ctx.beginPath(); ctx.arc(bx,by,cr*0.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(190,75,54,0.75)';
+  });
   ctx.restore();
 }
 
@@ -1692,8 +1793,8 @@ function bindEvents(){
     if(Game.mode!=='battle' || !Game.hero) return;
     const rect=stage.getBoundingClientRect();
     const x=(e.clientX-rect.left), y=(e.clientY-rect.top);
-    Game.hero.goalX=Math.max(-1500,Math.min(1500,(x-W/2)+camX));
-    Game.hero.goalY=Math.max(-800,Math.min(800,(y-H/2)+camY));
+    Game.hero.goalX=Math.max(-MAP_W+MAP_M,Math.min(MAP_W-MAP_M,(x-W/2)+camX));
+    Game.hero.goalY=Math.max(-MAP_H+MAP_M,Math.min(MAP_H-MAP_M,(y-H/2)+camY));
     Game.hero.hasGoal=true;
   });
   // 键盘 WASD / 方向键（电脑端）
@@ -1729,6 +1830,7 @@ function bindEvents(){
   });
 }
 function exitToMain(){
+  Game.mode='idle'; // 先停战斗循环，再回主界面（showView('main') 亦会兜底复位）
   saveGame(); showView('main'); renderRoleCards();
   // 若处于父页面（大厅 iframe）全屏中，退出全屏回到大厅
   try{
@@ -1745,6 +1847,7 @@ loadGame();
 refreshHud();
 renderRoleCards();
 bindEvents();
+buildDecor();
 showView('main');
 /* ---------- 界面反馈：粒子 / 波纹 ---------- */
 function spawnInk(){
