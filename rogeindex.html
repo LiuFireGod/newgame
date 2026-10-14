@@ -1193,14 +1193,39 @@ function update(dt){
   // 投射物
   for(let i=Game.projs.length-1;i>=0;i--){
     const p=Game.projs[i];
-    p.t-=dt;
-    const dx=(p.tx-p.x), dy=(p.ty-p.y), d=Math.hypot(dx,dy);
-    const step=p.speed*dt;
-    if(d<=step){
-      damageTo(p.mob, p.dmg, p.crit);
-      spawnFx(p.x,p.y,'burst',p.color);
-      Game.projs.splice(i,1);
-    } else { p.x+=dx/d*step; p.y+=dy/d*step; }
+    if(p.kind==='swordqi' || p.kind==='bladeqi'){
+      // 月牙剑气：沿方向推进，扇形范围内所有怪物掉血
+      p.dist += p.speed*dt;
+      const cx = h.x + Math.cos(p.ang)*p.dist;
+      const cy = h.y + Math.sin(p.ang)*p.dist;
+      p.x = cx; p.y = cy;
+      // 扇形命中判定
+      for(const m of Game.monsters){
+        if(m.hp<=0 || p.hitSet[m]) continue;
+        const dx = m.x - h.x, dy = m.y - h.y;
+        const d = Math.hypot(dx, dy);
+        if(d > p.dist + m.r + 14) continue;
+        if(d < p.dist - 40) continue;
+        const ma = Math.atan2(dy, dx);
+        let da = Math.abs(ma - p.ang);
+        if(da > Math.PI) da = Math.PI*2 - da;
+        if(da <= p.arcHalf){
+          p.hitSet[m] = true;
+          damageTo(m, p.dmg, p.crit);
+          spawnFx(m.x, m.y, 'burst', p.color);
+        }
+      }
+      if(p.dist >= p.range){ Game.projs.splice(i,1); }
+    } else {
+      p.t-=dt;
+      const dx=(p.tx-p.x), dy=(p.ty-p.y), d=Math.hypot(dx,dy);
+      const step=p.speed*dt;
+      if(d<=step){
+        damageTo(p.mob, p.dmg, p.crit);
+        spawnFx(p.x,p.y,'burst',p.color);
+        Game.projs.splice(i,1);
+      } else { p.x+=dx/d*step; p.y+=dy/d*step; }
+    }
   }
 
   // 怪物行动
@@ -1296,19 +1321,22 @@ function attack(h, target){
     }
     spawnFx(h.x, h.y, 'strum', '#C9B5E8');
   } else if (h.key === 'sword' || h.key === 'blade') {
-    // 剑/刀：挥舞后发射单体剑气
+    // 剑/刀：挥舞后发出月牙形剑气（扇形范围伤害）
     const ang = Math.atan2(target.y-h.y, target.x-h.x);
     const isSword = h.key === 'sword';
-    const sp = isSword ? 620 : 460;
+    const sp = isSword ? 560 : 420;
+    const range = isSword ? 130 : 110; // 月牙飞行距离
+    const arcHalf = isSword ? 0.45 : 0.65; // 半弧角（刀更宽）
     Game.projs.push({
-      x: h.x + Math.cos(ang)*10, y: h.y + Math.sin(ang)*10,
-      tx: target.x, ty: target.y, t: 1.2, speed: sp,
-      dmg, crit: isCrit, mob: target,
+      x: h.x, y: h.y,
+      ang: ang, range: range, dist: 0,
+      speed: sp, dmg, crit: isCrit,
       kind: isSword ? 'swordqi' : 'bladeqi',
       color: isSword ? '#9FE3F0' : '#F0B070',
-      ang: ang
+      arcHalf: arcHalf,
+      hitSet: {} // 已命中怪物集合，避免重复掉血
     });
-    spawnFx(h.x + Math.cos(ang)*14, h.y + Math.sin(ang)*14, 'strum', isSword?'#9FE3F0':'#F0B070');
+    spawnFx(h.x, h.y, 'strum', isSword?'#9FE3F0':'#F0B070');
   } else {
     damageTo(target, dmg, isCrit);
     // 近战打击反馈：刀光 + 命中爆点 + 击退
@@ -1754,42 +1782,36 @@ function drawBossBar(){
   ctx.textAlign='left';
 }
 
-/* 投射物（音符 / 剑气 / 刀气） */
+/* 投射物（音符 / 月牙剑气 / 月牙刀气） */
 function drawProjs(){
   for(const p of Game.projs){
     ctx.save();
-    ctx.translate(p.x,p.y);
     if(p.kind==='swordqi' || p.kind==='bladeqi'){
-      // 剑气：细长光刃 + 身后拖尾
-      const ang = Math.atan2(p.ty-p.y, p.tx-p.x);
-      ctx.rotate(ang);
+      // 月牙形剑气：从角色位置画到当前位置，扇形弧
       const isSword = p.kind==='swordqi';
-      const len = isSword ? 34 : 26;
-      const wid = isSword ? 3.5 : 6;
-      // 拖尾（身后渐隐）
-      const trail = ctx.createLinearGradient(-len*1.8, 0, 0, 0);
-      trail.addColorStop(0, 'rgba(0,0,0,0)');
-      trail.addColorStop(1, isSword ? 'rgba(159,227,240,0.5)' : 'rgba(240,176,112,0.5)');
-      ctx.strokeStyle = trail;
-      ctx.lineWidth = wid*0.7;
-      ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(-len*1.8, 0); ctx.lineTo(0, 0); ctx.stroke();
-      // 光刃本体
-      const grad = ctx.createLinearGradient(0,0,len,0);
-      if(isSword){
-        grad.addColorStop(0,'rgba(220,245,250,0.95)');
-        grad.addColorStop(1,'rgba(159,227,240,0.2)');
-      } else {
-        grad.addColorStop(0,'rgba(255,225,170,0.95)');
-        grad.addColorStop(1,'rgba(220,100,50,0.2)');
-      }
-      ctx.fillStyle = grad;
+      const half = p.arcHalf;
+      const rOut = p.dist + 16;
+      const rIn = Math.max(10, p.dist - 14);
+      const col = isSword ? '159,227,240' : '240,176,112';
+      // 外层月牙（扇形弧）
       ctx.beginPath();
-      ctx.moveTo(0,-wid/2); ctx.lineTo(len*0.7,-wid/2.6); ctx.lineTo(len,0); ctx.lineTo(len*0.7,wid/2.6); ctx.lineTo(0,wid/2);
+      ctx.arc(Game.hero.x, Game.hero.y, rOut, p.ang-half, p.ang+half, false);
+      ctx.arc(Game.hero.x, Game.hero.y, rIn, p.ang+half, p.ang-half, true);
       ctx.closePath();
+      const grad = ctx.createRadialGradient(Game.hero.x, Game.hero.y, rIn, Game.hero.x, Game.hero.y, rOut);
+      grad.addColorStop(0, 'rgba('+col+',0.05)');
+      grad.addColorStop(1, 'rgba('+col+',0.85)');
+      ctx.fillStyle = grad;
       ctx.fill();
+      // 外弧高亮描边
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(Game.hero.x, Game.hero.y, rOut, p.ang-half, p.ang+half, false);
+      ctx.stroke();
     } else {
       // 音符（琴）
+      ctx.translate(p.x,p.y);
       ctx.rotate(Game.time*8);
       ctx.fillStyle=p.color;
       ctx.beginPath(); ctx.ellipse(0,0,5,3.4,0,0,Math.PI*2); ctx.fill();
