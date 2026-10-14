@@ -3113,34 +3113,13 @@ async function openPlayerProfile(acct) {
   const isMe = currentUser && (currentUser.lname || currentUser.name.toLowerCase()) === acct;
   body.innerHTML = `
     <div style="text-align:center;">
-      <div style="width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:${info.avatar_color || '#6c5ce7'};overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;">
+      <div style="width:72px;height:72px;border-radius:50%;margin:0 auto 12px;background:${info.avatar_color || '#6c5ce7'};overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;">
         ${info.avatar_img ? `<img src="${rankEsc(info.avatar_img)}" style="width:100%;height:100%;object-fit:cover;">` : rankEsc((info.name || acct).slice(0,1).toUpperCase())}
       </div>
       <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${rankEsc(info.name || acct)}</div>
-      <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${info.bio ? rankEsc(info.bio) : '这个人很懒，什么都没写~'}</div>
-      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:12px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openSettings()">⚙️ 编辑资料 / 设置</button>' : ''}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:11px;color:var(--text-secondary);">已挖土方</div>
-        <div style="font-size:15px;font-weight:700;color:var(--accent-light);margin-top:4px;">${igFmt(stats.soil)}</div>
-      </div>
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:11px;color:var(--text-secondary);">金币</div>
-        <div style="font-size:15px;font-weight:700;color:#f1c40f;margin-top:4px;">${igFmt(stats.coins)}</div>
-      </div>
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:11px;color:var(--text-secondary);">挖完山数</div>
-        <div style="font-size:15px;font-weight:700;color:#a29bfe;margin-top:4px;">${stats.progress} 座</div>
-      </div>
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:11px;color:var(--text-secondary);">Boss击杀</div>
-        <div style="font-size:15px;font-weight:700;color:#e17055;margin-top:4px;">${stats.boss} 次</div>
-      </div>
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:11px;color:var(--text-secondary);">境界</div>
-        <div style="font-size:15px;font-weight:700;color:#74b9ff;margin-top:4px;">${rankEsc(stats.realmName)}</div>
-      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">UID: ${info.uid ? rankEsc(String(info.uid)) : '——'}</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-top:10px;line-height:1.6;">${info.bio ? rankEsc(info.bio) : '这个人很懒，什么都没写~'}</div>
+      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:14px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openSettings()">⚙️ 编辑资料 / 设置</button>' : ''}
     </div>`;
 }
 document.getElementById('profileModal').addEventListener('click', (e) => {
