@@ -836,11 +836,11 @@
   </div>
 </div>
 
-<!-- ===== 设置弹窗（编辑资料 + 修改密码） ===== -->
-<div class="modal-overlay" id="settingsModal">
+<!-- ===== 个人中心（编辑资料） ===== -->
+<div class="modal-overlay" id="profileEditModal">
   <div class="modal" style="max-width:400px;">
-    <button class="close-modal" onclick="document.getElementById('settingsModal').classList.remove('show')">&times;</button>
-    <h2 style="text-align:left;font-size:18px;margin-bottom:14px;">设置</h2>
+    <button class="close-modal" onclick="document.getElementById('profileEditModal').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;margin-bottom:14px;">个人中心</h2>
     <div style="text-align:center;margin-bottom:8px;">
       <div class="profile-avatar" id="pfAvatar" onclick="pfPickAvatar()" style="cursor:pointer;">A</div>
       <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">点击头像修改</div>
@@ -866,12 +866,33 @@
       <label>个人简介</label>
       <textarea id="pfBio" rows="3" maxlength="120" placeholder="介绍一下自己（最多120字）" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;font-size:13px;resize:none;"></textarea>
     </div>
-    <div class="form-group" style="border-top:1px solid var(--border);padding-top:14px;">
-      <label>修改密码（可选）</label>
-      <input type="password" id="pfOldPass" placeholder="当前密码" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;font-size:13px;margin-bottom:8px;">
-      <input type="password" id="pfNewPass" placeholder="新密码（4-32位）" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;font-size:13px;">
-    </div>
     <button class="btn-primary" style="width:100%;" onclick="pfSave()">保存修改</button>
+  </div>
+</div>
+
+<!-- ===== 设置弹窗（修改密码） ===== -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="max-width:400px;">
+    <button class="close-modal" onclick="document.getElementById('settingsModal').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;margin-bottom:14px;">设置</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;cursor:pointer;" onclick="togglePwdForm()">
+      <div>
+        <div style="font-weight:600;font-size:14px;">🔑 修改密码</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">定期更换密码更安全</div>
+      </div>
+      <span id="pwdArrow" style="color:var(--text-secondary);font-size:18px;">›</span>
+    </div>
+    <div id="pwdForm" style="display:none;margin-top:12px;">
+      <div class="form-group">
+        <label>当前密码</label>
+        <input type="password" id="pfOldPass" placeholder="输入当前密码" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:9px 12px;font-size:13px;">
+      </div>
+      <div class="form-group">
+        <label>新密码（4-32位）</label>
+        <input type="password" id="pfNewPass" placeholder="输入新密码" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:9px 12px;font-size:13px;">
+      </div>
+      <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="doChangePassword()">确认修改密码</button>
+    </div>
   </div>
 </div>
 
@@ -1571,16 +1592,10 @@ document.getElementById('switchModal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeSwitch();
 });
 
-// ===== 个人中心（展示自己主页，公开信息） =====
+// ===== 个人中心（编辑资料） =====
 const PF_COLORS = ['#ff6b81','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#6c5ce7','#a29bfe','#fd79a8','#00b894'];
-let pfSnapshot = null; // 打开设置弹窗时的资料快照（保存失败时回滚，保证失败不留在本地）
+let pfSnapshot = null; // 打开个人中心时的资料快照（保存失败时回滚）
 function openProfile() {
-  if (!currentUser) { openAuth(); return; }
-  document.getElementById('userMenu').classList.remove('show');
-  openPlayerProfile(currentUser.lname || currentUser.name.toLowerCase());
-}
-// ===== 设置弹窗（编辑资料 + 修改密码） =====
-function openSettings() {
   if (!currentUser) { openAuth(); return; }
   document.getElementById('userMenu').classList.remove('show');
   pfSnapshot = {
@@ -1593,7 +1608,6 @@ function openSettings() {
   document.getElementById('pfNameInput').value = currentUser.name || '';
   document.getElementById('pfAccount').value = currentUser.lname || currentUser.name.toLowerCase();
   document.getElementById('pfUid').textContent = currentUser.uid || '待分配';
-  // uid 缺失时实时从云端补齐（页面刚打开时资料同步可能尚未完成）
   if (!currentUser.uid && currentUser.lname) {
     cloudGetUser(currentUser.lname).then(row => {
       if (row && row.uid && currentUser) {
@@ -1605,11 +1619,25 @@ function openSettings() {
     });
   }
   document.getElementById('pfBio').value = currentUser.bio || '';
-  document.getElementById('pfOldPass').value = '';
-  document.getElementById('pfNewPass').value = '';
   document.getElementById('pfAvatarPicker').style.display = 'none';
   pfRenderColors();
+  document.getElementById('profileEditModal').classList.add('show');
+}
+// ===== 设置弹窗（修改密码） =====
+function openSettings() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('userMenu').classList.remove('show');
+  document.getElementById('pfOldPass').value = '';
+  document.getElementById('pfNewPass').value = '';
+  document.getElementById('pwdForm').style.display = 'none';
+  document.getElementById('pwdArrow').textContent = '›';
   document.getElementById('settingsModal').classList.add('show');
+}
+function togglePwdForm() {
+  const f = document.getElementById('pwdForm');
+  const show = f.style.display === 'none';
+  f.style.display = show ? 'block' : 'none';
+  document.getElementById('pwdArrow').textContent = show ? '⌄' : '›';
 }
 function pfRenderAvatar() {
   const av = document.getElementById('pfAvatar');
@@ -1673,35 +1701,6 @@ async function pfSave() {
   if (!name) { showToast('名称不能为空'); return; }
   if (name.length > 16) { showToast('名称最长16个字符'); return; }
   const bio = document.getElementById('pfBio').value.trim().slice(0, 120);
-  // 修改密码（可选）：先验证旧密码并更新，失败则整体中止
-  const oldPass = document.getElementById('pfOldPass').value;
-  const newPass = document.getElementById('pfNewPass').value;
-  if (oldPass || newPass) {
-    if (!oldPass) { showToast('请输入当前密码'); return; }
-    const err = validatePassword(newPass);
-    if (err) { showToast(err); return; }
-    const oldHash0 = await makePasswordHash(oldPass);
-    const oldLegacy = simpleHash(oldPass);
-    const newHash = await makePasswordHash(newPass);
-    // 旧密码校验必须用库中同一盐重算（随机盐哈希每次不同，等值比对永远失败——与登录修复一致）
-    let oldHash = oldHash0;
-    const saltInfo = await supabaseRpc('get_login_salt', { p_lname: currentUser.lname });
-    if (saltInfo && saltInfo.pbkdf2 && saltInfo.salt && saltInfo.iter) {
-      oldHash = 'pbkdf2$' + saltInfo.iter + '$' + saltInfo.salt + '$' + await hashPassword(oldPass, saltInfo.salt, saltInfo.iter);
-    }
-    try {
-      const r = await supabaseRpc('change_password', { p_lname: currentUser.lname, p_old: oldHash, p_old_legacy: oldLegacy, p_new: newHash });
-      if (!r || !r.ok) { showToast('当前密码不正确，改密失败'); return; }
-      // 改密成功：服务端轮换会话令牌（其他设备全部下线），本机保存新令牌；不再保存密码哈希
-      if (r.token) {
-        currentUser.token = r.token;
-        setSavedToken(currentUser.lname || (currentUser.name || '').toLowerCase(), r.token);
-      }
-    } catch(e) {
-      showToast('⚠️ 云端改密失败，请检查网络后重试');
-      return;
-    }
-  }
   // 先提交云端：云端成功才允许落本地，失败完全不保存
   const candidate = {
     lname: currentUser.lname,
@@ -1743,8 +1742,36 @@ async function pfSave() {
   }
   setCurrentUser(currentUser);
   updateNavUser();
-  document.getElementById('settingsModal').classList.remove('show');
+  document.getElementById('profileEditModal').classList.remove('show');
   showToast('✅ 个人资料已保存并同步云端');
+}
+// 单独修改密码（设置弹窗内）
+async function doChangePassword() {
+  if (!currentUser) return;
+  const oldPass = document.getElementById('pfOldPass').value;
+  const newPass = document.getElementById('pfNewPass').value;
+  if (!oldPass) { showToast('请输入当前密码'); return; }
+  const err = validatePassword(newPass);
+  if (err) { showToast(err); return; }
+  const oldLegacy = simpleHash(oldPass);
+  const oldHash0 = await makePasswordHash(oldPass);
+  const newHash = await makePasswordHash(newPass);
+  let oldHash = oldHash0;
+  const saltInfo = await supabaseRpc('get_login_salt', { p_lname: currentUser.lname });
+  if (saltInfo && saltInfo.pbkdf2 && saltInfo.salt && saltInfo.iter) {
+    oldHash = 'pbkdf2$' + saltInfo.iter + '$' + saltInfo.salt + '$' + await hashPassword(oldPass, saltInfo.salt, saltInfo.iter);
+  }
+  try {
+    const r = await supabaseRpc('change_password', { p_lname: currentUser.lname, p_old: oldHash, p_old_legacy: oldLegacy, p_new: newHash });
+    if (!r || !r.ok) { showToast('当前密码不正确，改密失败'); return; }
+    if (r.token) {
+      currentUser.token = r.token;
+      setSavedToken(currentUser.lname || (currentUser.name || '').toLowerCase(), r.token);
+    }
+    document.getElementById('pfOldPass').value = '';
+    document.getElementById('pfNewPass').value = '';
+    showToast('✅ 密码已修改');
+  } catch(e) { showToast('⚠️ 改密失败，请检查网络后重试'); }
 }
 async function cloudUpdateProfile(u) {
   try {
@@ -1760,6 +1787,9 @@ document.getElementById('profileModal').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
 document.getElementById('settingsModal').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+document.getElementById('profileEditModal').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
 
@@ -3159,7 +3189,7 @@ async function openPlayerProfile(acct) {
       <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${rankEsc(info.name || acct)}</div>
       <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">UID: ${info.uid ? rankEsc(String(info.uid)) : '——'}</div>
       <div style="font-size:13px;color:var(--text-secondary);margin-top:10px;line-height:1.6;">${info.bio ? rankEsc(info.bio) : '这个人很懒，什么都没写~'}</div>
-      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:14px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openSettings()">⚙️ 编辑资料 / 设置</button>' : ''}
+      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:14px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openProfile()">✏️ 编辑资料</button>' : ''}
     </div>`;
 }
 document.getElementById('profileModal').addEventListener('click', (e) => {
