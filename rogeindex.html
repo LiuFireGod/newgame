@@ -520,8 +520,7 @@ body{
 <div class="activity-strip" id="actStrip" style="display:none">
   <div class="wrap" id="actWrap">
     <div class="act-card" data-act="sign"><span class="tag t-sign">签到</span><div><div class="txt">今日签到</div><div class="sub">灵石 +50</div></div></div>
-    <div class="act-card" data-act="luck"><span class="tag t-reward">福缘</span><div><div class="txt">福缘抽奖</div><div class="sub">消耗灵石 · 有奖</div></div></div>
-    <div class="act-card" data-act="trial"><span class="tag t-event">试炼</span><div><div class="txt">宗门试炼</div><div class="sub">无尽挑战榜</div></div></div>
+    <div class="act-card" data-act="trial"><span class="tag t-event">试炼</span><div><div class="txt">宗门试炼</div><div class="sub">多难度挑战</div></div></div>
   </div>
 </div>
 
@@ -622,25 +621,23 @@ body{
 
 <div class="overlay" id="overlayActivity">
   <div class="modal">
-    <h2>江 湖 活 动</h2>
+    <h2>每 日 签 到</h2>
     <div class="mvline"></div>
-    <div class="act-list">
-      <div class="act-row">
-        <div class="ic ic-sign">签</div>
-        <div class="inf"><div class="t">每日签到</div><div class="d">今日可领灵石 50，明日重置</div></div>
-        <button class="btn btn-bamboo" id="signBtn">签到</button>
-      </div>
-      <div class="act-row">
-        <div class="ic ic-luck">缘</div>
-        <div class="inf"><div class="t">福缘抽奖</div><div class="d">消耗灵石 100，随机获得强化</div></div>
-        <button class="btn btn-bamboo" id="luckBtn">抽一次</button>
-      </div>
-      <div class="act-row">
-        <div class="ic ic-trial">炼</div>
-        <div class="inf"><div class="t">宗门试炼</div><div class="d">无尽模式 · 冲击最高波次记录</div></div>
-        <button class="btn btn-ghost" id="trialBtn">挑战</button>
-      </div>
+    <div style="text-align:center;padding:10px 0 6px;">
+      <div style="font-size:14px;color:var(--ink-soft);margin-bottom:10px;">今日可领灵石 <b style="color:var(--cinnabar);">50</b>，次日重置</div>
+      <button class="btn btn-bamboo" id="signBtn" style="min-width:140px;">立即签到</button>
     </div>
+    <h3 style="margin:14px 0 6px;font-size:14px;">签到日志</h3>
+    <div id="signLogList" style="max-height:220px;overflow-y:auto;font-size:12px;color:var(--ink-soft);"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayTrial">
+  <div class="modal">
+    <h2>宗 门 试 炼</h2>
+    <div class="mvline"></div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:10px;">选择难度迎敌 · 难度越高奖励越丰</div>
+    <div id="trialDiffList" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 </div>
 
@@ -736,6 +733,8 @@ const Game = {
   selected: 'sword',
   ling: 100, gold: 0,
   signedToday: false,
+  signLog: [],           // 签到历史 [{date, ling}]
+  trialDiff: 'normal',  // 当前试炼难度
   bestWave: 0,           // 无尽试炼最高波
   endless: false,        // 是否无尽试炼模式
   savedIds: new Set(),   // 本局已获得的强化（避免重复）
@@ -760,7 +759,7 @@ const el = {
   toastWrap:$('toastWrap')
 };
 const overlay = {
-  upgrade:$('overlayUpgrade'), result:$('overlayResult'), pause:$('overlayPause'), activity:$('overlayActivity')
+  upgrade:$('overlayUpgrade'), result:$('overlayResult'), pause:$('overlayPause'), activity:$('overlayActivity'), trial:$('overlayTrial')
 };
 
 /* ---------- Canvas ---------- */
@@ -898,6 +897,7 @@ function rgToken(){ try{ return localStorage.getItem('gh_rg_token_'+rgLname())||
 function rgSetToken(t){ try{ if(t) localStorage.setItem('gh_rg_token_'+rgLname(), t); }catch(e){} }
 function rgPayload(){ return {
   ling:Game.ling, gold:Game.gold, signedToday:Game.signedToday,
+  signLog:Game.signLog, trialDiff:Game.trialDiff,
   bestWave:Game.bestWave, date:new Date().toDateString(), ts:Date.now()
 }; }
 function cloudSave(){
@@ -925,6 +925,7 @@ function cloudLoad(cb){
           // 云端为主：云端较新则采用并落本地；本地较新则上传云端
           if(!local || (d.ts||0) >= (local.ts||0)){
             Game.ling=d.ling; Game.gold=d.gold||0; Game.bestWave=d.bestWave||0;
+            Game.signLog=d.signLog||[]; Game.trialDiff=d.trialDiff||'normal';
             Game.signedToday = d.signedToday && d.date===new Date().toDateString();
             saveGame();
           } else { cloudSave(); }
@@ -946,6 +947,7 @@ function loadGame(){
     const d=JSON.parse(localStorage.getItem(rgSaveKey()));
     if(!d) return;
     Game.ling=d.ling??100; Game.gold=d.gold??0; Game.bestWave=d.bestWave||0;
+    Game.signLog=d.signLog||[]; Game.trialDiff=d.trialDiff||'normal';
     Game.signedToday = d.signedToday && d.date===new Date().toDateString();
   }catch(e){}
 }
@@ -978,20 +980,56 @@ function rgInitCloud(){
 }
 
 /* 活动 */
-function openActivity(){ openOverlay(overlay.activity); }
+const TRIAL_DIFFS = {
+  easy:    { name:'入门试炼', desc:'怪物弱化 · 适合新手', hpMul:0.6,  atkMul:0.7,  rewardMul:0.8, endless:false },
+  normal:  { name:'普通试炼', desc:'标准难度',            hpMul:1.0,  atkMul:1.0,  rewardMul:1.0, endless:false },
+  hard:    { name:'困难试炼', desc:'怪物强化 · 奖励 1.5x', hpMul:1.6,  atkMul:1.35, rewardMul:1.5, endless:false },
+  hell:    { name:'地狱试炼', desc:'地狱难度 · 奖励 2.2x', hpMul:2.4,  atkMul:1.7,  rewardMul:2.2, endless:false },
+  endless: { name:'无尽试炼', desc:'无尽模式 · 冲击最高波次', hpMul:1.0, atkMul:1.0, rewardMul:1.0, endless:true }
+};
+function openSign(){
+  renderSignLog();
+  $('signBtn').textContent = Game.signedToday ? '今日已签到' : '立即签到';
+  $('signBtn').disabled = Game.signedToday;
+  openOverlay(overlay.activity);
+}
+function renderSignLog(){
+  const list = $('signLogList');
+  if (!Game.signLog.length) { list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--ink-soft);">暂无签到记录</div>'; return; }
+  list.innerHTML = Game.signLog.slice().reverse().slice(0, 30).map(s =>
+    `<div style="display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px dashed var(--border);">
+       <span>${s.date}</span><span style="color:var(--cinnabar);">灵石 +${s.ling}</span>
+     </div>`).join('');
+}
+function openTrial(){
+  const box = $('trialDiffList');
+  box.innerHTML = Object.entries(TRIAL_DIFFS).map(([k,d]) => `
+    <div onclick="startTrial('${k}')" style="display:flex;justify-content:space-between;align-items:center;padding:11px 12px;background:var(--paper);border:1px solid var(--border);border-radius:10px;cursor:pointer;">
+      <div><div style="font-weight:600;font-size:14px;">${d.name}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${d.desc}</div></div>
+      <span style="color:var(--cinnabar);">›</span>
+    </div>`).join('');
+  openOverlay(overlay.trial);
+}
+function startTrial(key){
+  const d = TRIAL_DIFFS[key];
+  if (!d) return;
+  Game.trialDiff = key;
+  Game.endless = !!d.endless;
+  closeOverlay(overlay.trial);
+  showView('battle');
+  resetBattle(true);
+  toast(d.name + ' · 迎敌！');
+}
 function doSign(){
   if(Game.signedToday){ toast('今日已签到'); return; }
-  Game.signedToday=true; Game.ling+=50; refreshHud(); saveGame();
-  toast('签到成功 · 灵石 +50');
-}
-function doLuck(){
-  if(Game.ling<100){ toast('灵石不足（需 100）'); return; }
-  Game.ling-=100;
-  const rolls=rollUpgrades(1);
-  const u=rolls[0];
-  if(u){ Game.savedIds.add(u.id); toast('福缘所至 · 悟得「'+u.name+'」'); }
-  else toast('福缘已尽，心法穷尽');
+  Game.signedToday = true; Game.ling += 50;
+  const today = new Date().toDateString();
+  Game.signLog.push({ date: today, ling: 50 });
   refreshHud(); saveGame();
+  renderSignLog();
+  $('signBtn').textContent = '今日已签到';
+  $('signBtn').disabled = true;
+  toast('签到成功 · 灵石 +50');
 }
 
 /* ============================================================
@@ -1047,16 +1085,20 @@ function makeMob(type, wave){
   // 生成点收紧进围场边界内，杜绝出界怪
   const sx=Math.max(-MAP_W+MAP_M+30,Math.min(MAP_W-MAP_M-30,hx+Math.cos(ang)*R));
   const sy=Math.max(-MAP_H+MAP_M+30,Math.min(MAP_H-MAP_M-30,hy+Math.sin(ang)*R));
+  const dm = TRIAL_DIFFS[Game.trialDiff] || TRIAL_DIFFS.normal;
+  const hpMul = dm.hpMul, atkMul = dm.atkMul;
   return {
     type, name:m.name, x:sx, y:sy,
-    hp:m.hp, maxHp:m.hp, atk:m.atk, speed:m.speed*(0.9+Math.random()*0.3),
-    r:m.r, gold:m.gold, exp:m.exp, color:m.color, shape:m.shape,
+    hp:Math.round(m.hp*hpMul), maxHp:Math.round(m.hp*hpMul), atk:Math.round(m.atk*atkMul), speed:m.speed*(0.9+Math.random()*0.3),
+    r:m.r, gold:Math.round(m.gold*dm.rewardMul), exp:Math.round(m.exp*dm.rewardMul), color:m.color, shape:m.shape,
     atkTimer:Math.random()*0.5, slow:0, slowT:0, hitFlash:0, atkAnim:0, boss:false,
     spawnT:0.8, kvt:0, kvm:{x:0,y:0}
   };
 }
 function makeBoss(wave){
-  const hp=Math.round(BOSS_BASE.hp*(1+0.35*(wave/10-1)));
+  const dm = TRIAL_DIFFS[Game.trialDiff] || TRIAL_DIFFS.normal;
+  const hp=Math.round(BOSS_BASE.hp*(1+0.35*(wave/10-1))*dm.hpMul);
+  const atk=Math.round(BOSS_BASE.atk*(1+0.12*(wave/10-1))*dm.atkMul);
   // 生成点：强制在英雄可视区之外 + 出生缓冲
   const diag=Math.hypot(W,H)||720;
   const minR=Math.max(560, diag*0.5+150);
@@ -1068,9 +1110,9 @@ function makeBoss(wave){
   const sy=Math.max(-MAP_H+MAP_M+40,Math.min(MAP_H-MAP_M-40,hy+Math.sin(ang)*R));
   return {
     type:'boss', name:BOSS_BASE.name, x:sx, y:sy,
-    hp, maxHp:hp, atk:BOSS_BASE.atk*(1+0.12*(wave/10-1)),
+    hp, maxHp:hp, atk,
     speed:BOSS_BASE.speed*(0.9+Math.random()*0.2), r:BOSS_BASE.r,
-    gold:BOSS_BASE.gold, exp:BOSS_BASE.exp, color:BOSS_BASE.color, shape:'boss',
+    gold:Math.round(BOSS_BASE.gold*dm.rewardMul), exp:Math.round(BOSS_BASE.exp*dm.rewardMul), color:BOSS_BASE.color, shape:'boss',
     atkTimer:0, slow:0, slowT:0, hitFlash:0, atkAnim:0, boss:true,
     spawnT:1.0, kvt:0, kvm:{x:0,y:0}
   };
@@ -1819,11 +1861,13 @@ function bindEvents(){
   $('resAgain').addEventListener('click', ()=>{ closeOverlay(overlay.result); resetBattle(Game.endless); });
   $('resHome').addEventListener('click', ()=>{ closeOverlay(overlay.result); exitToMain(); });
   // 顶部活动入口
-  $('hudActivity').addEventListener('click', openActivity);
-  document.querySelectorAll('.act-card').forEach(c=>c.addEventListener('click', ()=>openActivity()));
+  $('hudActivity').addEventListener('click', ()=>openSign());
+  document.querySelectorAll('.act-card').forEach(c=>c.addEventListener('click', ()=>{
+    const act = c.dataset.act;
+    if (act === 'sign') openSign();
+    else if (act === 'trial') openTrial();
+  }));
   $('signBtn').addEventListener('click', doSign);
-  $('luckBtn').addEventListener('click', doLuck);
-  $('trialBtn').addEventListener('click', ()=>{ closeOverlay(overlay.activity); showView('battle'); resetBattle(true); toast('宗门试炼 · 无尽迎敌'); });
   // 点击遮罩空白关闭弹层（升级除外）
   Object.values(overlay).forEach(o=>{
     if(o!==overlay.upgrade) o.addEventListener('click', e=>{ if(e.target===o) closeOverlay(o); });
