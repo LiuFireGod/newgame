@@ -3070,7 +3070,7 @@ async function openPlayerProfile(acct) {
   body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载中…</div>';
   // 云端资料（users 表）为权威，本地不覆盖（改名等改动以云端为准，保证多端一致）
   try {
-    const us = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(acct) + '&limit=1');
+    const us = await supabaseRest('GET', 'users', 'lname=eq.' + encodeURIComponent(acct) + '&select=lname,name,avatar_img,avatar_color,bio,uid,is_admin,banned,invite_code&limit=1');
     if (us && us[0]) { info = Object.assign(info, us[0]); if (!info.name) info.name = acct; }
   } catch(e) {
     body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">加载失败，请稍后重试</div>';
