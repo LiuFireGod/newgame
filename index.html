@@ -2047,12 +2047,13 @@ function renderPosts() {
     const pid = p.id != null ? String(p.id) : null;
     const liked = pid ? likedPosts.has(pid) : false;
     const comments = getComments(pid);
-    const uname = esc(p.user_name || p.user || '匿名');
+    const prof = p.lname ? userProfileMap[p.lname] : null;
+    // 名称/头像优先取用户中心最新资料（改名、换头像后所有历史帖子实时同步）
+    const uname = esc((prof && prof.name) || p.user_name || p.user || '匿名');
     // 点击名称跳转该用户主页（本地草稿无 lname 时不可点）
     const unameHtml = p.lname
       ? `<span style="cursor:pointer;color:var(--accent-light);" onclick="event.stopPropagation(); openPlayerProfile('${esc(p.lname)}')">${uname}</span>`
       : uname;
-    const prof = p.lname ? userProfileMap[p.lname] : null;
     const ucolor = (prof && prof.avatar_color) || p.avatar_color || p.avatarColor || '#6c5ce7';
     const uimg = safeImage(prof && prof.avatar_img);
     const excerpt = esc(p.content || p.excerpt || '');
