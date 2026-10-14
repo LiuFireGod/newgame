@@ -1034,6 +1034,7 @@
 // 数据本地保存于浏览器（localStorage）；帖子通过 Supabase REST 云端同步，实现跨设备共享
 let toastTimer; // 提前声明，避免 showToast 在脚本初始化完成前被调用时报错
 let cloudPosts = []; // 提前声明，供 init 中 loadPosts/renderPosts 使用（帖子）
+let userProfileMap = {}; // lname -> {name, avatar_img, avatar_color}：发帖人资料实时同步（换头像后所有历史帖子自动更新）
 let currentGame = "全部"; // 提前声明，供 init 中 renderPosts 使用
 let likedPosts = new Set(); // 提前声明，供 init 中 renderPosts 使用
 let commentsMap = {}; // 提前声明：init 中 loadComments/renderPosts 会先于本文件靠后的声明执行（TDZ 防护）
@@ -1724,12 +1725,25 @@ function loadPosts() {
   try { cloudPosts = JSON.parse(localStorage.getItem('gh_posts') || '[]'); }
   catch { cloudPosts = []; }
   supabaseRest('GET', 'posts', 'select=*&order=created_at.desc')
-    .then(data => {
+    .then(async data => {
       cloudPosts = data || [];
       try { localStorage.setItem('gh_posts', JSON.stringify(cloudPosts)); } catch {}
+      await syncUserProfiles(cloudPosts);
       renderPosts();
     })
     .catch(() => { /* 云端不可用则保留本地缓存 */ });
+}
+// 批量拉取帖子作者最新资料（头像/昵称），保证帖子列表与资料页实时同步
+async function syncUserProfiles(posts) {
+  try {
+    const lnames = [...new Set((posts || []).map(p => p.lname).filter(Boolean))];
+    if (!lnames.length) return;
+    const q = 'lname=in.(' + lnames.map(l => '"' + encodeURIComponent(l) + '"').join(',') + ')&select=lname,name,avatar_img,avatar_color';
+    const rows = await supabaseRest('GET', 'users', q);
+    const m = {};
+    (rows || []).forEach(u => { m[u.lname] = u; });
+    userProfileMap = m;
+  } catch(e) { /* 失败保留旧 map */ }
 }
 function getPosts() { return cloudPosts; }
 // ===== 帖子作者操作凭证（编辑/删除用，token 只存本机，云端 edit_token 列不可读） =====
@@ -2034,16 +2048,22 @@ function renderPosts() {
     const liked = pid ? likedPosts.has(pid) : false;
     const comments = getComments(pid);
     const uname = esc(p.user_name || p.user || '匿名');
-    const ucolor = p.avatar_color || p.avatarColor || '#6c5ce7';
+    // 点击名称跳转该用户主页（本地草稿无 lname 时不可点）
+    const unameHtml = p.lname
+      ? `<span style="cursor:pointer;color:var(--accent-light);" onclick="event.stopPropagation(); openPlayerProfile('${esc(p.lname)}')">${uname}</span>`
+      : uname;
+    const prof = p.lname ? userProfileMap[p.lname] : null;
+    const ucolor = (prof && prof.avatar_color) || p.avatar_color || p.avatarColor || '#6c5ce7';
+    const uimg = safeImage(prof && prof.avatar_img);
     const excerpt = esc(p.content || p.excerpt || '');
     const ptime = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '刚刚';
     const safeImg = safeImage(p.image);
     return `
     <div class="post-card" data-pid="${pid}" onclick="togglePost(this)">
       <div class="post-header">
-        <div class="post-avatar" style="background:${ucolor}">${esc((p.user_name || p.user || '匿')[0])}</div>
+        <div class="post-avatar" style="${uimg ? `background:url('${uimg}') center/cover no-repeat;` : `background:${ucolor};`}">${uimg ? '' : esc((p.user_name || p.user || '匿')[0])}</div>
         <div>
-          <div class="post-user">${uname}</div>
+          <div class="post-user">${unameHtml}</div>
           <div class="post-time">${ptime}</div>
         </div>
         <div class="post-game-badge">${esc(p.game)}</div>
