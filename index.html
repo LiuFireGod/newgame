@@ -1511,9 +1511,24 @@ function renderSwitch() {
         <div style="font-weight:600;font-size:14px;word-break:break-all;">${esc(nm)}${cur ? ' <span style="color:var(--accent-light);font-size:12px;">（当前）</span>' : ''}</div>
         <div style="font-size:11px;color:var(--text-secondary);word-break:break-all;margin-top:2px;">${esc(x.lname)}${x.uid ? ' · UID ' + esc(x.uid) : ''}</div>
       </div>
+      ${cur ? '' : `<button onclick="event.stopPropagation(); deleteLocalAccount('${esc(x.lname)}')" title="从本机移除" style="background:transparent;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer;padding:4px 8px;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>`}
       <span style="color:${cur ? 'var(--accent-light)' : 'var(--text-secondary)'};font-size:20px;font-weight:700;">${cur ? '✓' : '›'}</span>
     </div>`;
   }).join('');
+}
+// 从本机移除账号记录（不删云端账号、不删存档；仅清本机列表与令牌）
+function deleteLocalAccount(lname) {
+  const nm = lname;
+  if (!confirm(`确定从本机移除账号 ${nm}？\n（云端账号与数据保留，下次用密码登录可恢复）`)) return;
+  try {
+    const users = getUsers().filter(u => u.lname !== lname);
+    saveUsers(users);
+    const tokens = JSON.parse(localStorage.getItem('gh_tokens') || '{}');
+    delete tokens[lname];
+    localStorage.setItem('gh_tokens', JSON.stringify(tokens));
+    renderSwitch();
+    showToast('已从本机移除 ' + nm);
+  } catch(e) { showToast('移除失败：' + e.message); }
 }
 // 切换到指定账号（自动登入）：用本机保存的服务端会话令牌走 verify_token 校验，云端不可用禁止切换
 async function switchToAccount(lname) {
