@@ -1305,10 +1305,13 @@ async function cloudCreateUser(u) {
 }
 function ensureLocalUser(u) {
   const users = getUsers();
-  if (!users.find(x => x.lname === u.lname)) {
-    users.push({ name: u.name, lname: u.lname, token: u.token || getSavedToken(u.lname), avatar_color: u.avatar_color, bio: u.bio || '', avatar_img: u.avatar_img || null, uid: u.uid || '' });
-    saveUsers(users);
-  }
+  // 总是合并最新会话令牌：旧记录（无 token 字段）不更新会导致切换账号时"本地凭证缺失"
+  const tok = u.token || getSavedToken(u.lname) || '';
+  const rec = { name: u.name, lname: u.lname, token: tok, avatar_color: u.avatar_color || u.avatarColor, bio: u.bio || '', avatar_img: u.avatar_img || null, uid: u.uid || '' };
+  const idx = users.findIndex(x => x.lname === u.lname);
+  if (idx >= 0) users[idx] = Object.assign({}, users[idx], rec);
+  else users.push(rec);
+  saveUsers(users);
 }
 
 async function handleAuth() {
@@ -1490,11 +1493,14 @@ async function switchToAccount(lname) {
   if (cur) { closeSwitch(); return; }
   const users = getUsers();
   const rec = users.find(x => x.lname === lname);
-  if (!rec || !rec.token) { showToast('该账号本地凭证缺失，请先用密码登录一次'); return; }
+  if (!rec) { showToast('该账号不在本机'); return; }
+  // 兜底：gh_users 旧记录可能缺 token 字段，从 gh_tokens 本机会话令牌里取
+  const token = rec.token || getSavedToken(lname);
+  if (!token) { showToast('该账号本地凭证缺失，请先用密码登录一次'); return; }
   const cloudOk = await cloudPing();
   if (!cloudOk) { showToast('⚠️ 无法连接云端服务器，禁止切换，请检查网络后重试'); return; }
   try {
-    const res = await supabaseRpc('verify_token', { p_lname: lname, p_token: rec.token });
+    const res = await supabaseRpc('verify_token', { p_lname: lname, p_token: token });
     if (!res || !res.ok) {
       if (res && res.reason === 'banned') showToast('该账号已被封禁');
       else showToast('该账号凭证已失效（密码可能已修改），请用密码重新登录一次');
@@ -1502,7 +1508,7 @@ async function switchToAccount(lname) {
     }
     // 切换成功：先离线旧账号，再载入新账号
     if (currentUser) cloudOffline(currentUser.name, currentUser.lname);
-    currentUser = { name: res.name, lname: res.lname || lname, token: rec.token, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
+    currentUser = { name: res.name, lname: res.lname || lname, token: token, avatar_color: res.avatar_color, avatarColor: res.avatar_color, is_admin: res.is_admin, banned: res.banned, bio: res.bio, avatar_img: res.avatar_img, uid: res.uid, invite_code: res.invite_code || '' };
     setCurrentUser(currentUser);
     ensureLocalUser(currentUser);
     updateNavUser();
@@ -3418,7 +3424,7 @@ async function cloudUpsertSave(userName, saveData) {
     if (res && res.ok && res.token) {
       if (res.token !== igGetSaveToken()) igSetSaveToken(res.token); // 首次建档/重建返回凭证，仅存本机
     } else if (res && res.reason) {
-      showToast('存档同步失败：' + (res.detail || res.reason) + '（请重新登录后再试）');
+      showToast('存档同步失败：' + (res.detail || res.reason));
     }
   } catch(e) {}
 }
