@@ -574,6 +574,7 @@ body{
       <div class="cd-mask" id="skillMask" style="height:0%"></div>
     </button>
     <button class="pause-btn" id="pauseBtn2" title="暂停">Ⅱ</button>
+    <button class="pause-btn" id="fsBtn" title="全屏">⛶</button>
   </div>
 </section>
 
@@ -1889,6 +1890,8 @@ function bindEvents(){
   window.addEventListener('keydown', (e)=>{
     const k=mapKey(e.key);
     if(keys[k]!==undefined){ keys[k]=true; e.preventDefault(); }
+    // 空格 = 绝技
+    if(e.code==='Space' || e.key===' '){ e.preventDefault(); castSkill(); }
   });
   window.addEventListener('keyup', (e)=>{
     const k=mapKey(e.key);
@@ -1900,6 +1903,22 @@ function bindEvents(){
   const pause=()=>{ if(Game.mode==='battle'){ Game.mode='paused'; openOverlay(overlay.pause);} };
   $('pauseBtn').addEventListener('click', pause);
   $('pauseBtn2').addEventListener('click', pause);
+  // 全屏切换（游戏内）
+  $('fsBtn').addEventListener('click', ()=>{
+    const d = document;
+    const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+    const p = window.parent && window.parent!==window ? window.parent.document : null;
+    const pFsEl = p && (p.fullscreenElement || p.webkitFullscreenElement);
+    if(fsEl || pFsEl){
+      const doc = fsEl ? d : p;
+      const fn = doc.exitFullscreen || doc.webkitExitFullscreen;
+      if(fn) fn.call(doc);
+    } else {
+      const el = d.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if(req){ try{ req.call(el); }catch(e){} }
+    }
+  });
   $('resumeBtn').addEventListener('click', ()=>{ Game.mode='battle'; closeOverlay(overlay.pause); });
   $('quitBtn').addEventListener('click', ()=>{ closeOverlay(overlay.pause); exitToMain(); });
   // 结算
