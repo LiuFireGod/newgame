@@ -660,6 +660,7 @@
         <div class="user-menu-item" onclick="openProfile()">个人中心</div>
         <div class="user-menu-item" onclick="openMyPosts()">我的帖子</div>
         <div class="user-menu-item" id="menuAdmin" style="display:none;" onclick="location.href='admin-users.html'">管理后台</div>
+        <div class="user-menu-item" onclick="openSettings()">设置</div>
         <div class="user-menu-item" onclick="openSwitch()">切换账号</div>
         <div class="user-menu-item logout" onclick="logout()">退出登录</div>
       </div>
@@ -835,10 +836,11 @@
   </div>
 </div>
 
-<!-- ===== 个人中心弹窗 ===== -->
-<div class="modal-overlay" id="profileModal">
+<!-- ===== 设置弹窗（编辑资料 + 修改密码） ===== -->
+<div class="modal-overlay" id="settingsModal">
   <div class="modal" style="max-width:400px;">
-    <button class="close-modal" onclick="document.getElementById('profileModal').classList.remove('show')">&times;</button>
+    <button class="close-modal" onclick="document.getElementById('settingsModal').classList.remove('show')">&times;</button>
+    <h2 style="text-align:left;font-size:18px;margin-bottom:14px;">设置</h2>
     <div style="text-align:center;margin-bottom:8px;">
       <div class="profile-avatar" id="pfAvatar" onclick="pfPickAvatar()" style="cursor:pointer;">A</div>
       <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">点击头像修改</div>
@@ -1529,10 +1531,16 @@ document.getElementById('switchModal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeSwitch();
 });
 
-// ===== 个人中心（资料编辑） =====
+// ===== 个人中心（展示自己主页，公开信息） =====
 const PF_COLORS = ['#ff6b81','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#6c5ce7','#a29bfe','#fd79a8','#00b894'];
-let pfSnapshot = null; // 打开编辑弹窗时的资料快照（保存失败时回滚，保证失败不留在本地）
+let pfSnapshot = null; // 打开设置弹窗时的资料快照（保存失败时回滚，保证失败不留在本地）
 function openProfile() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('userMenu').classList.remove('show');
+  openPlayerProfile(currentUser.lname || currentUser.name.toLowerCase());
+}
+// ===== 设置弹窗（编辑资料 + 修改密码） =====
+function openSettings() {
   if (!currentUser) { openAuth(); return; }
   document.getElementById('userMenu').classList.remove('show');
   pfSnapshot = {
@@ -1561,7 +1569,7 @@ function openProfile() {
   document.getElementById('pfNewPass').value = '';
   document.getElementById('pfAvatarPicker').style.display = 'none';
   pfRenderColors();
-  document.getElementById('profileModal').classList.add('show');
+  document.getElementById('settingsModal').classList.add('show');
 }
 function pfRenderAvatar() {
   const av = document.getElementById('pfAvatar');
@@ -1695,7 +1703,7 @@ async function pfSave() {
   }
   setCurrentUser(currentUser);
   updateNavUser();
-  document.getElementById('profileModal').classList.remove('show');
+  document.getElementById('settingsModal').classList.remove('show');
   showToast('✅ 个人资料已保存并同步云端');
 }
 async function cloudUpdateProfile(u) {
@@ -1709,6 +1717,9 @@ async function cloudUpdateProfile(u) {
 
 // 点击弹窗外部关闭
 document.getElementById('profileModal').addEventListener('click', (e)=>{
+  if (e.target === e.currentTarget) e.target.classList.remove('show');
+});
+document.getElementById('settingsModal').addEventListener('click', (e)=>{
   if (e.target === e.currentTarget) e.target.classList.remove('show');
 });
 
@@ -3107,7 +3118,7 @@ async function openPlayerProfile(acct) {
       </div>
       <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${rankEsc(info.name || acct)}</div>
       <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${info.bio ? rankEsc(info.bio) : '这个人很懒，什么都没写~'}</div>
-      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:12px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openProfile()">✏️ 编辑我的资料</button>' : ''}
+      ${isMe ? '<button class="ig-shop-btn" style="background:#a29bfe;color:#333;margin-top:12px;" onclick="document.getElementById(\'profileModal\').classList.remove(\'show\'); openSettings()">⚙️ 编辑资料 / 设置</button>' : ''}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
       <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;">
