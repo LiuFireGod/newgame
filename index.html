@@ -1504,7 +1504,7 @@ function renderSwitch() {
     const cur = currentUser && currentUser.lname === x.lname;
     const color = x.avatar_color || '#6c5ce7';
     const nm = x.name || x.lname;
-    const imgBg = x.avatar_img ? `background:url("${safeImage(x.avatar_img)}") center/cover no-repeat;` : `background:${color};`;
+    const imgBg = x.avatar_img ? `background:url('${safeImage(x.avatar_img)}') center/cover no-repeat;` : `background:${color};`;
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:12px;transition:background .15s;${cur ? 'background:rgba(108,92,231,.12);' : ''}" onclick="switchToAccount('${esc(x.lname)}')">
       <div style="width:46px;height:46px;border-radius:50%;${imgBg}display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:17px;flex-shrink:0;box-shadow:0 0 0 2px ${cur ? 'var(--accent-light)' : 'var(--border)'};overflow:hidden;">${x.avatar_img ? '' : esc((nm[0] || '?').toUpperCase())}</div>
       <div style="flex:1;min-width:0;">
