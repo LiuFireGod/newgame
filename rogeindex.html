@@ -1294,6 +1294,20 @@ function attack(h, target){
       Game.projs.push({ x:h.x, y:h.y, tx:target.x, ty:target.y, t:1.2, speed:sp, dmg, crit:isCrit, mob:target, color:'#C9B5E8' });
     }
     spawnFx(h.x, h.y, 'strum', '#C9B5E8');
+  } else if (h.key === 'sword' || h.key === 'blade') {
+    // 剑/刀：挥舞后发射单体剑气
+    const ang = Math.atan2(target.y-h.y, target.x-h.x);
+    const isSword = h.key === 'sword';
+    const sp = isSword ? 620 : 460;
+    Game.projs.push({
+      x: h.x + Math.cos(ang)*10, y: h.y + Math.sin(ang)*10,
+      tx: target.x, ty: target.y, t: 1.2, speed: sp,
+      dmg, crit: isCrit, mob: target,
+      kind: isSword ? 'swordqi' : 'bladeqi',
+      color: isSword ? '#9FE3F0' : '#F0B070',
+      ang: ang
+    });
+    spawnFx(h.x + Math.cos(ang)*14, h.y + Math.sin(ang)*14, 'strum', isSword?'#9FE3F0':'#F0B070');
   } else {
     damageTo(target, dmg, isCrit);
     // 近战打击反馈：刀光 + 命中爆点 + 击退
@@ -1617,14 +1631,16 @@ function drawHero(){
     // 刀/剑大挥砍
     ctx.save();
     ctx.translate(dir*9,-3); ctx.rotate((0.65-swing*1.15)*dir);
-    ctx.strokeStyle=r.key==='sword'?'#E6E9E2':'#F0E9D8'; ctx.lineWidth=2.4;
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(dir*17,-swing*9); ctx.stroke();
+    const isSword = r.key==='sword';
+    ctx.strokeStyle=isSword?'#E6E9E2':'#F0E9D8'; ctx.lineWidth=isSword?1.8:3.2;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(dir*(isSword?20:15),-swing*(isSword?11:7)); ctx.stroke();
     ctx.strokeStyle=r.accent; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(dir*5,0); ctx.stroke();
     ctx.restore();
     // 挥击光弧
     if(swing>0.35){
-      ctx.strokeStyle='rgba(255,255,255,'+(swing*0.5)+')'; ctx.lineWidth=2.4;
+      ctx.strokeStyle=isSword?'rgba(159,227,240,'+(swing*0.6)+')':'rgba(240,176,112,'+(swing*0.6)+')';
+      ctx.lineWidth=2.4;
       ctx.beginPath(); ctx.arc(dir*6,-3,15*swing,-1.0*dir,0.5*dir); ctx.stroke();
     }
   }
@@ -1729,16 +1745,45 @@ function drawBossBar(){
   ctx.textAlign='left';
 }
 
-/* 投射物（音符） */
+/* 投射物（音符 / 剑气 / 刀气） */
 function drawProjs(){
   for(const p of Game.projs){
     ctx.save();
     ctx.translate(p.x,p.y);
-    ctx.rotate(Game.time*8);
-    ctx.fillStyle=p.color;
-    ctx.beginPath(); ctx.ellipse(0,0,5,3.4,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.4)';
-    ctx.beginPath(); ctx.ellipse(0,0,2.4,1.6,0,0,Math.PI*2); ctx.fill();
+    if(p.kind==='swordqi'){
+      // 剑：细长青色光刃
+      const ang = Math.atan2(p.ty-p.y, p.tx-p.x);
+      ctx.rotate(ang);
+      const grad = ctx.createLinearGradient(-14,0,14,0);
+      grad.addColorStop(0,'rgba(159,227,240,0)');
+      grad.addColorStop(0.5,'rgba(255,255,255,0.95)');
+      grad.addColorStop(1,'rgba(159,227,240,0.85)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(-14,0); ctx.lineTo(10,-2.2); ctx.lineTo(14,0); ctx.lineTo(10,2.2); ctx.closePath();
+      ctx.fill();
+    } else if(p.kind==='bladeqi'){
+      // 刀：宽厚橙红光弧
+      const ang = Math.atan2(p.ty-p.y, p.tx-p.x);
+      ctx.rotate(ang);
+      const grad = ctx.createLinearGradient(-12,0,16,0);
+      grad.addColorStop(0,'rgba(240,176,112,0)');
+      grad.addColorStop(0.5,'rgba(255,220,160,0.95)');
+      grad.addColorStop(1,'rgba(220,100,50,0.9)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(-12,0); ctx.lineTo(8,-4.5); ctx.lineTo(16,0); ctx.lineTo(8,4.5); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle='rgba(255,200,120,.6)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,0); ctx.stroke();
+    } else {
+      // 音符（琴）
+      ctx.rotate(Game.time*8);
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.ellipse(0,0,5,3.4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.4)';
+      ctx.beginPath(); ctx.ellipse(0,0,2.4,1.6,0,0,Math.PI*2); ctx.fill();
+    }
     ctx.restore();
   }
 }
